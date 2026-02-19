@@ -58,6 +58,7 @@ As you work, you'll follow this process:
 - Write tests for *functionality*; don't simply create tests for the sake of having tests.
 - In general, when working on the CLI, always prefer verbosity/explicitness (e.g., for arguments/commands) over conciseness.
 - Plan files under `plans/` must use numeric prefixes for sequencing (for example, `0-setup.md`, `1-import.md`, `2-schema.md`).
+- Git commit messages must be descriptive, and always end with an `Authored by:` footer line as the final line of the commit message.
 </additional-instructions>
 
 <incentives>
