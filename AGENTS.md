@@ -14,7 +14,7 @@ As you work, you'll follow this process:
 
 2. Write your plan to a Markdown file, numbered according to our existing pattern/sequence, under `plans/`. Use Markdown checkboxes for each group of items, and check it off as you go.
 
-3. Review the git commit history to understand what was recently implemented and any relevant patterns.
+3. Review the git commit history and the last one or two plan files under `./plans` to understand what was recently implemented and any relevant patterns.
 
 4. *Using our existing testing patterns & structural patterns from the repository*, follow TDD religiously: 
 
@@ -31,7 +31,11 @@ As you work, you'll follow this process:
 
 7. Perform a final sweeping code review, re-running all tests and `pyright`.
 
-8. Once the code satisfies the spec, passes all tests, and passes code review, run the formatter, then make a git commit with a helpful commit message. 
+8. Run any sanity/smoke checks helpful to ensure the feature "truly does work," not just passes automated tests.
+
+9. Once the code satisfies the spec, passes all tests, and passes code review, run the formatter, then make a git commit with a helpful commit message.
+
+10. Update the plan file as you work, marking off all completed checkboxes. Once the full plan file is complete, add an "executive summary" section at the bottom, with a description of (a) the key points of what was done, (b) key decisions made, including basic justification for each, (c) any information or tips helpful for the next agent that works on the project, including any unaddressed concerns, gotchas, or issues the agent should know about.
 </development-process>
 
 <key-guidelines>
