@@ -7,6 +7,7 @@ from pathlib import Path
 import click
 
 from driggsby.db import connect_database, initialize_database
+from driggsby.import_contract import DryRunResult, ValidationIssue, build_dry_run_result
 from driggsby.import_json import read_json_input
 from driggsby.models import TransactionFilters
 from driggsby.migrations import apply_pending_migrations
@@ -55,6 +56,29 @@ def schema() -> None:
     click.echo(json.dumps(payload, sort_keys=True))
 
 
+def _resolve_import_file(file: str | None) -> Path | None:
+    if file is None or file == "-":
+        return None
+
+    path = Path(file)
+    if not path.exists():
+        raise click.ClickException(f"File does not exist: {path}")
+    if path.is_dir():
+        raise click.ClickException(f"Expected a file path but got directory: {path}")
+    return path
+
+
+def _invalid_json_dry_run_result(message: str) -> DryRunResult:
+    return DryRunResult(
+        valid=False,
+        normalized_source_provider=None,
+        source_account_ref=None,
+        transaction_count=0,
+        errors=(ValidationIssue(path="$", message=message),),
+        fingerprints=(),
+    )
+
+
 @main.command(name="import")
 @click.option(
     "--format",
@@ -63,21 +87,34 @@ def schema() -> None:
     show_default=True,
     type=click.Choice(["json"], case_sensitive=False),
 )
+@click.option("--dry-run", is_flag=True, help="Validate input and print preview JSON.")
 @click.argument(
     "file",
     required=False,
-    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+    type=str,
 )
-def import_command(import_format: str, file: Path | None) -> None:
+def import_command(import_format: str, dry_run: bool, file: str | None) -> None:
     """Import JSON from a file or stdin (placeholder only)."""
     if import_format.lower() != "json":
         raise click.ClickException("Only JSON is supported in this phase.")
 
-    stdin_text = click.get_text_stream("stdin").read() if file is None else None
+    file_path = _resolve_import_file(file)
+    stdin_text = click.get_text_stream("stdin").read() if file_path is None else None
     try:
-        import_input = read_json_input(file_path=file, stdin_text=stdin_text)
+        import_input = read_json_input(file_path=file_path, stdin_text=stdin_text)
     except json.JSONDecodeError as exc:
+        if dry_run:
+            summary = _invalid_json_dry_run_result(f"Invalid JSON input: {exc.msg}")
+            click.echo(json.dumps(summary.to_dict(), sort_keys=True))
+            raise click.exceptions.Exit(1) from exc
         raise click.ClickException(f"Invalid JSON input: {exc.msg}") from exc
+
+    if dry_run:
+        summary = build_dry_run_result(import_input.payload)
+        click.echo(json.dumps(summary.to_dict(), sort_keys=True))
+        if not summary.valid:
+            raise click.exceptions.Exit(1)
+        return
 
     click.echo(
         f"Placeholder import complete (toy). source={import_input.source} "
@@ -106,7 +143,4 @@ def transactions(
         start=start,
         end=end,
     )
-    click.echo(
-        "No data yet. Transactions command is a placeholder. "
-        f"filters={filters}"
-    )
+    click.echo(f"No data yet. Transactions command is a placeholder. filters={filters}")

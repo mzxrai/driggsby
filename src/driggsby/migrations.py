@@ -50,7 +50,9 @@ MIGRATIONS: tuple[Migration, ...] = (
                     REFERENCES accounts(id) ON DELETE SET NULL,
                 source_name TEXT NOT NULL,
                 source_type TEXT NOT NULL
-                    CHECK (source_type IN ('pdf', 'csv', 'json')),
+                    CHECK (source_type IN ('pdf', 'csv', 'json', 'api')),
+                source_provider TEXT NOT NULL DEFAULT 'other',
+                source_account_ref TEXT NOT NULL DEFAULT '',
                 statement_hash TEXT NOT NULL,
                 parser_name TEXT NOT NULL,
                 parser_version TEXT NOT NULL,
@@ -88,12 +90,6 @@ MIGRATIONS: tuple[Migration, ...] = (
                 status TEXT NOT NULL DEFAULT 'posted'
                     CHECK (status IN ('pending', 'posted', 'cleared')),
                 owner_name TEXT,
-                transfer_pair_id TEXT,
-                transfer_role TEXT
-                    CHECK (
-                        transfer_role IS NULL
-                        OR transfer_role IN ('source', 'destination')
-                    ),
                 metadata_json TEXT
                     CHECK (
                         metadata_json IS NULL OR json_valid(metadata_json)
@@ -122,6 +118,10 @@ MIGRATIONS: tuple[Migration, ...] = (
                 ON imports(imported_at);
             """,
             """
+            CREATE INDEX IF NOT EXISTS idx_imports_provider_ref
+                ON imports(source_provider, source_account_ref);
+            """,
+            """
             CREATE INDEX IF NOT EXISTS idx_transactions_account_posted
                 ON transactions(account_id, posted_date DESC);
             """,
@@ -134,8 +134,22 @@ MIGRATIONS: tuple[Migration, ...] = (
                 ON transactions(category, posted_date DESC);
             """,
             """
-            CREATE INDEX IF NOT EXISTS idx_transactions_transfer_pair
-                ON transactions(transfer_pair_id);
+            CREATE TABLE IF NOT EXISTS source_account_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_provider TEXT NOT NULL,
+                source_account_ref TEXT NOT NULL,
+                account_id INTEGER NOT NULL
+                    REFERENCES accounts(id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL
+                    DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                updated_at TEXT NOT NULL
+                    DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                UNIQUE(source_provider, source_account_ref)
+            );
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS idx_source_account_links_account_id
+                ON source_account_links(account_id);
             """,
             """
             CREATE UNIQUE INDEX IF NOT EXISTS
@@ -206,4 +220,3 @@ def apply_pending_migrations(connection: sqlite3.Connection) -> list[str]:
         applied_now.append(migration.version)
 
     return applied_now
-

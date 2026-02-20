@@ -69,6 +69,83 @@ def test_import_accepts_json_stdin() -> None:
     assert "placeholder" in result.output.lower()
 
 
+def test_import_accepts_json_stdin_with_dash_file_argument() -> None:
+    result = run_cli(["import", "--format", "json", "-"], input_text="{}")
+
+    assert result.exit_code == 0
+    assert "placeholder" in result.output.lower()
+
+
+def test_import_dry_run_successful_payload() -> None:
+    payload = {
+        "source_provider": "Apple Card",
+        "source_account_ref": "apple-card-1234",
+        "transactions": [
+            {
+                "posted_date": "2026-01-10",
+                "description": "Coffee Shop",
+                "amount_cents": -650,
+            }
+        ],
+    }
+    result = run_cli(
+        ["import", "--format", "json", "--dry-run"],
+        input_text=json.dumps(payload),
+    )
+
+    assert result.exit_code == 0
+    summary = json.loads(result.output)
+    assert summary["valid"] is True
+    assert summary["normalized_source_provider"] == "apple_card"
+    assert summary["source_account_ref"] == "apple-card-1234"
+    assert summary["transaction_count"] == 1
+    assert summary["errors"] == []
+    assert len(summary["fingerprints"]) == 1
+
+
+def test_import_dry_run_invalid_payload() -> None:
+    payload = {
+        "source_provider": "Apple Card",
+        "transactions": [
+            {
+                "posted_date": "2026/01/10",
+                "description": " ",
+                "amount_cents": -650,
+                "currency": "US",
+            }
+        ],
+    }
+    result = run_cli(
+        ["import", "--format", "json", "--dry-run"],
+        input_text=json.dumps(payload),
+    )
+
+    assert result.exit_code == 1
+    summary = json.loads(result.output)
+    assert summary["valid"] is False
+    assert summary["normalized_source_provider"] is None
+    assert summary["source_account_ref"] is None
+    assert summary["transaction_count"] == 0
+    assert summary["errors"]
+
+    error_paths = {error["path"] for error in summary["errors"]}
+    assert "source_account_ref" in error_paths
+    assert "transactions[0].posted_date" in error_paths
+    assert "transactions[0].description" in error_paths
+    assert "transactions[0].currency" in error_paths
+
+
+def test_import_dry_run_invalid_json() -> None:
+    result = run_cli(["import", "--format", "json", "--dry-run"], input_text="{")
+
+    assert result.exit_code == 1
+    summary = json.loads(result.output)
+    assert summary["valid"] is False
+    assert summary["errors"]
+    assert summary["errors"][0]["path"] == "$"
+    assert "invalid json input" in summary["errors"][0]["message"].lower()
+
+
 def test_import_rejects_missing_file(tmp_path: Path) -> None:
     missing_path = tmp_path / "missing.json"
 

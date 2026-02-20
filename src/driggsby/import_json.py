@@ -3,12 +3,14 @@
 from dataclasses import dataclass
 import json
 from pathlib import Path
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
 class ImportInput:
     source: str
     bytes_read: int
+    payload: object
 
 
 def read_json_input(file_path: Path | None, stdin_text: str | None) -> ImportInput:
@@ -20,7 +22,12 @@ def read_json_input(file_path: Path | None, stdin_text: str | None) -> ImportInp
         source = "stdin"
 
     stripped = raw_input.strip()
+    payload: Any = {}
     if stripped:
-        json.loads(stripped)
+        payload = json.loads(stripped)
 
-    return ImportInput(source=source, bytes_read=len(raw_input.encode("utf-8")))
+    return ImportInput(
+        source=source,
+        bytes_read=len(raw_input.encode("utf-8")),
+        payload=payload,
+    )

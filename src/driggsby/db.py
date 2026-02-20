@@ -34,7 +34,9 @@ def ensure_db_file(db_path: Path | None = None) -> tuple[Path, bool]:
     return path, (not already_exists)
 
 
-def connect_database(db_path: Path | None = None) -> tuple[sqlite3.Connection, Path, bool]:
+def connect_database(
+    db_path: Path | None = None,
+) -> tuple[sqlite3.Connection, Path, bool]:
     path, created = ensure_db_file(db_path)
     connection = sqlite3.connect(path)
     connection.execute("PRAGMA foreign_keys = ON;")

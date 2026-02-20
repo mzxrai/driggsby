@@ -77,4 +77,3 @@ def build_schema_payload(connection: sqlite3.Connection) -> dict[str, Any]:
         "schema_version": get_current_schema_version(connection),
         "tables": tables,
     }
-

@@ -1,73 +1,81 @@
 # Driggsby V1 Proposal (Python-First)
 
-Last updated: 2026-02-19
+Last updated: 2026-02-20
 
 ## Purpose
 
-Build an initial Driggsby CLI in Python that gives us a strict, testable foundation for local financial data tooling.  
-This phase focuses on project setup, contracts, and safe stubs, not full ledger behavior.
+Build a strict, testable local ledger foundation for agent-driven finance workflows.
 
-## Scope for This Phase
+Driggsby owns:
 
-1. Python package scaffold using `uv`
-2. Strict typing via `pyright`
-3. Test-first CLI development with `pytest`
-4. Command surface and stable placeholder outputs
-5. Real local initialization behavior for SQLite file creation
+- SQLite schema + migrations
+- import validation contract
+- normalization + dedupe primitives
+- local CLI contracts
 
-## Command Surface
+The user’s agent owns:
+
+- parsing statements/files into structured JSON
+
+## Current Implemented Surface
 
 - `driggsby init`
 - `driggsby schema`
-- `driggsby import --format json [FILE]`
+- `driggsby import --format json [FILE|-] [--dry-run]`
 - `driggsby accounts`
 - `driggsby transactions [--account TEXT] [--category TEXT] [--start YYYY-MM-DD] [--end YYYY-MM-DD]`
 
-## Behavioral Contracts
+## Current Behavior
 
 ### `init`
 
-- DB location is hardcoded for now: `~/.driggsby/ledger.db`
-- Command is idempotent:
-  - first run creates directory and DB file
-  - later runs return success with `already initialized`
-- No table creation in this phase
+- DB path is currently fixed: `~/.driggsby/ledger.db`
+- Applies migrations and reports schema version
+- Idempotent on repeated runs
 
 ### `schema`
 
-- Returns valid JSON placeholder output
-- Explicitly marked toy/dev
-- Current shape:
+- Returns canonical schema metadata from live SQLite
 
-```json
-{
-  "toy": true,
-  "version": "0.1.0-dev",
-  "message": "Toy schema placeholder. Not production-ready.",
-  "entities": []
-}
-```
+### `import --dry-run`
 
-### `import`
+- Accepts JSON from file or stdin
+- Validates required/optional contract fields
+- Normalizes `source_provider`
+- Computes deterministic dedupe fingerprints
+- Returns structured summary JSON with `valid`, `errors`, and counts
+- Exits non-zero when invalid
 
-- Supports `--format json`
-- Accepts file input or stdin when file is omitted
-- Validates JSON structure (placeholder handling only)
-- Emits placeholder status output and exits cleanly
+### `import` (without `--dry-run`)
 
-### `accounts` and `transactions`
+- Still placeholder in this phase
 
-- Return clear `no data yet` placeholder responses
-- `transactions` validates date format as `YYYY-MM-DD`
+## Current Schema Direction
 
-## Non-Goals (This Phase)
+Core tables:
 
-- Real transaction persistence/import pipeline
-- Deduplication and normalization logic
-- Dashboard and API
-- Configurable DB path (`--db-path` or env override)
+- `accounts`
+- `imports`
+- `transactions`
+- `source_account_links`
+- `schema_migrations`
 
-## Why This Approach
+Recent decisions:
 
-This gives us a reliable execution contract for agent workflows now, while keeping implementation small and easy to evolve.  
-Future phases can add schema/tables, import logic, and query behavior without reworking the foundation.
+- removed transfer fields from `transactions` for v1 simplicity
+- added source identity fields on `imports`
+- added source-account linking table
+
+## Non-Goals (Current Phase)
+
+- Full insert/write pipeline for transactions
+- Fuzzy account matching
+- Dashboard/API product surface
+- Plaid-native ingestion
+
+## Next Steps
+
+1. Implement non-dry-run import persistence path.
+2. Apply normalization at write time consistently.
+3. Add insert-time dedupe behavior.
+4. Expand read/query commands beyond placeholders.
