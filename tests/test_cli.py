@@ -29,6 +29,7 @@ def test_init_creates_db(fake_home: Path) -> None:
     assert result.exit_code == 0
     assert db_path.exists()
     assert db_path.is_file()
+    assert "applied 1 migration" in result.output.lower()
 
 
 def test_init_is_idempotent(fake_home: Path) -> None:
@@ -37,18 +38,18 @@ def test_init_is_idempotent(fake_home: Path) -> None:
 
     assert first.exit_code == 0
     assert second.exit_code == 0
-    assert "already initialized" in second.output.lower()
+    assert "applied 0 migration" in second.output.lower()
 
 
-def test_schema_returns_placeholder_json() -> None:
+def test_schema_returns_canonical_json(fake_home: Path) -> None:
     result = run_cli(["schema"])
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["toy"] is True
-    assert payload["version"] == "0.1.0-dev"
-    assert isinstance(payload["message"], str)
-    assert payload["entities"] == []
+    assert payload["schema_version"] == "001_core_ledger"
+    tables = payload["tables"]
+    table_names = {table["name"] for table in tables}
+    assert {"accounts", "imports", "transactions", "schema_migrations"} <= table_names
 
 
 def test_import_accepts_json_file(tmp_path: Path) -> None:

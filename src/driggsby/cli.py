@@ -6,10 +6,11 @@ from pathlib import Path
 
 import click
 
-from driggsby.db import ensure_db_file
+from driggsby.db import connect_database, initialize_database
 from driggsby.import_json import read_json_input
 from driggsby.models import TransactionFilters
-from driggsby.schema import build_schema_placeholder
+from driggsby.migrations import apply_pending_migrations
+from driggsby.schema import build_schema_payload
 
 
 @click.group()
@@ -34,19 +35,24 @@ def _validate_yyyy_mm_dd(
 @main.command()
 def init() -> None:
     """Create the local driggsby sqlite file if needed."""
-    db_path, created = ensure_db_file()
-    if created:
-        click.echo(f"Initialized toy Driggsby database at {db_path}")
-        return
-
-    click.echo(f"Driggsby is already initialized at {db_path}")
+    result = initialize_database()
+    click.echo(
+        f"Driggsby initialized at {result.path}. "
+        f"Applied {len(result.applied_versions)} migration(s). "
+        f"Schema version: {result.current_version}"
+    )
 
 
 @main.command()
 def schema() -> None:
-    """Print a placeholder schema JSON document."""
-    payload = build_schema_placeholder().model_dump()
-    click.echo(json.dumps(payload))
+    """Print canonical schema JSON from live sqlite metadata."""
+    connection, _, _ = connect_database()
+    try:
+        apply_pending_migrations(connection)
+        payload = build_schema_payload(connection)
+    finally:
+        connection.close()
+    click.echo(json.dumps(payload, sort_keys=True))
 
 
 @main.command(name="import")
