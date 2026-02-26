@@ -22,7 +22,7 @@ pub fn run_with_home_override(home_override: Option<&Path>) -> ClientResult<Succ
     let db_path = std::path::PathBuf::from(&setup.db_path);
     let connection = open_connection(&db_path)?;
     let data = query_accounts_data(&connection, &db_path)?;
-    success("accounts", data)
+    success("account list", data)
 }
 
 pub(crate) fn query_accounts_data(

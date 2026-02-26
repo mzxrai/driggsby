@@ -11,31 +11,29 @@ const EXPECTED_TOP_LEVEL_HELP: &str = "Driggsby — personal finance intelligenc
 USAGE: driggsby <command>
 
 Try it:
-  driggsby demo dash                            Open sample dashboard with bundled data
-  driggsby demo recurring                       Preview sample recurring patterns
-  driggsby demo anomalies                       Preview sample anomaly detection
+  driggsby demo dash                                      Open sample dashboard with bundled data
+  driggsby demo recurring                                 Preview sample recurring patterns
+  driggsby demo anomalies                                 Preview sample anomaly detection
 
 Import your transactions:
-  1. driggsby import create --help              Read import schema and workflow details
-  2. driggsby import create --dry-run <path>    Safely validate import without data writes
-  3. driggsby import create <path>              Import transactions
+  1. driggsby import create --help                        Read import schema and workflow details
+  2. driggsby import create --dry-run <path>              Safely validate import without data writes
+  3. driggsby import create <path>                        Import transactions
 
 View Driggsby analysis (refreshed on each new import):
-  driggsby recurring                            Detect recurring transactions
-  driggsby anomalies                            Detect spending anomalies
-  driggsby dash                                 Open web dashboard (prints URL, attempts browser open)
+  driggsby recurring                                      Detect recurring transactions
+  driggsby anomalies                                      Detect spending anomalies
+  driggsby dash                                           Open web dashboard (prints URL, attempts browser open)
 
 Need to do custom analysis? Run SQL against our views:
-  1. driggsby schema                            Get DB path and view names
+  1. driggsby schema                                      Get DB path and view names
   2. Query `v1_*` views with sqlite3 or any SQL client
 
 Other commands:
-  driggsby accounts                             Show account-level ledger orientation
-  driggsby import keys uniq                     List canonical import identifiers
-  driggsby import duplicates <id>               Inspect duplicate rows from one import
-  driggsby import list                          List past imports
-  driggsby import undo <id>                     Undo an import
-  driggsby schema view <name>                   Inspect one view's columns
+  driggsby account list                                   Show account-level ledger orientation
+  driggsby import list                                    List past imports
+  driggsby import keys uniq                               List canonical import identifiers
+  driggsby import undo <import-id>                        Undo an import
 
 Want to ensure a clean first run, or having issues/errors?
   Run `driggsby import create --help` for import workflow guidance,
@@ -48,7 +46,7 @@ Usage:
   driggsby <command>
 
 Start here:
-  driggsby accounts
+  driggsby account list
   driggsby import create --help
   driggsby schema
 ";
@@ -249,7 +247,7 @@ fn schema_view_output_is_plaintext() {
 }
 
 #[test]
-fn accounts_plaintext_and_json_contracts_are_supported() {
+fn account_list_plaintext_and_json_contracts_are_supported() {
     let home = unique_test_home();
     let source_path = write_source_file(
         &home,
@@ -264,13 +262,14 @@ fn accounts_plaintext_and_json_contracts_are_supported() {
         run_cli_in_home_with_input(&home, &["import", "create", &source_arg], None);
     assert!(import_ok);
 
-    let (text_ok, text_body) = run_cli_in_home_with_input(&home, &["accounts"], None);
+    let (text_ok, text_body) = run_cli_in_home_with_input(&home, &["account", "list"], None);
     assert!(text_ok);
     assert!(text_body.contains("Ledger account summary:"));
     assert!(text_body.contains("Accounts:"));
     assert!(text_body.contains("acct_cli_accounts_1"));
 
-    let (json_ok, json_body) = run_cli_in_home_with_input(&home, &["accounts", "--json"], None);
+    let (json_ok, json_body) =
+        run_cli_in_home_with_input(&home, &["account", "list", "--json"], None);
     assert!(json_ok);
     let payload = parse_json(&json_body);
     assert!(payload["summary"].is_object());

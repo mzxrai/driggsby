@@ -172,11 +172,11 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Show account-level orientation for your current ledger
-    Accounts {
-        /// Emit machine-readable JSON output
-        #[arg(long)]
-        json: bool,
+    /// Manage account-level ledger orientation commands
+    #[command(arg_required_else_help = true)]
+    Account {
+        #[command(subcommand)]
+        command: AccountCommand,
     },
     /// Show your local database path, connection URI, and public view contracts
     Schema {
@@ -221,6 +221,16 @@ pub enum Commands {
     },
     /// Open the Driggsby web dashboard in your browser
     Dash,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum AccountCommand {
+    /// Show account-level orientation for your current ledger
+    List {
+        /// Emit machine-readable JSON output
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -312,13 +322,13 @@ where
 mod tests {
     use clap::error::ErrorKind;
 
-    use super::{Commands, DemoCommand, ImportCommand, SchemaCommand, parse_from};
+    use super::{AccountCommand, Commands, DemoCommand, ImportCommand, SchemaCommand, parse_from};
 
     #[test]
     fn parse_command_paths() {
         let cases: [Vec<&str>; 22] = [
-            vec!["driggsby", "accounts"],
-            vec!["driggsby", "accounts", "--json"],
+            vec!["driggsby", "account", "list"],
+            vec!["driggsby", "account", "list", "--json"],
             vec!["driggsby", "schema"],
             vec!["driggsby", "schema", "view", "v1_transactions"],
             vec!["driggsby", "import", "create"],
@@ -376,6 +386,20 @@ mod tests {
                 cli.command,
                 Commands::Schema {
                     command: Some(SchemaCommand::View { .. })
+                }
+            ));
+        }
+    }
+
+    #[test]
+    fn parse_account_list_subcommand() {
+        let parsed = parse_from(["driggsby", "account", "list", "--json"]);
+        assert!(parsed.is_ok());
+        if let Ok(cli) = parsed {
+            assert!(matches!(
+                cli.command,
+                Commands::Account {
+                    command: AccountCommand::List { json: true }
                 }
             ));
         }
@@ -571,6 +595,18 @@ mod tests {
     #[test]
     fn bare_import_shows_help() {
         let parsed = parse_from(["driggsby", "import"]);
+        assert!(parsed.is_err());
+        if let Err(err) = parsed {
+            assert_eq!(
+                err.kind(),
+                ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+            );
+        }
+    }
+
+    #[test]
+    fn bare_account_shows_help() {
+        let parsed = parse_from(["driggsby", "account"]);
         assert!(parsed.is_err());
         if let Err(err) = parsed {
             assert_eq!(

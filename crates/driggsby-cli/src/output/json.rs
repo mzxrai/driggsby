@@ -11,7 +11,7 @@ const JSON_VERSION: &str = "v1";
 
 pub fn render_success_json(success: &SuccessEnvelope) -> io::Result<String> {
     let value = match success.command.as_str() {
-        "accounts" => render_accounts_json(&success.data),
+        "account list" => render_accounts_json(&success.data),
         "import" => render_import_json(&success.data),
         "import list" => render_import_list_json(&success.data),
         "import duplicates" => render_import_duplicates_json(&success.data),
@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn accounts_json_returns_raw_data_shape() {
         let payload = success(
-            "accounts",
+            "account list",
             json!({
                 "summary": {
                     "account_count": 1,

@@ -24,6 +24,7 @@ pub fn render_accounts(data: &Value) -> io::Result<String> {
     if rows.is_empty() {
         lines.push(String::new());
         lines.push("No accounts found yet.".to_string());
+        lines.push(String::new());
         lines.push("Import a statement first:".to_string());
         lines.push("  1. driggsby import create --help".to_string());
         lines.push("  2. driggsby import create --dry-run <path>".to_string());
