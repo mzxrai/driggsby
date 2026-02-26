@@ -9,6 +9,7 @@ mod json;
 mod mode;
 mod schema_text;
 
+use crate::stdout_io::write_stdout_line;
 use std::io;
 
 use driggsby_client::{ClientError, SuccessEnvelope};
@@ -20,8 +21,7 @@ pub fn print_success(success: &SuccessEnvelope, mode: OutputMode) -> io::Result<
         OutputMode::Text => render_text_success(success)?,
         OutputMode::Json => json::render_success_json(success)?,
     };
-    println!("{body}");
-    Ok(())
+    write_stdout_line(&body)
 }
 
 pub fn print_failure(error: &ClientError, mode: OutputMode) -> io::Result<()> {
@@ -29,8 +29,7 @@ pub fn print_failure(error: &ClientError, mode: OutputMode) -> io::Result<()> {
         OutputMode::Json => json::render_error_json(error)?,
         OutputMode::Text => error_text::render_error(error),
     };
-    println!("{body}");
-    Ok(())
+    write_stdout_line(&body)
 }
 
 fn render_text_success(success: &SuccessEnvelope) -> io::Result<String> {

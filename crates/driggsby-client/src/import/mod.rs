@@ -369,7 +369,7 @@ fn build_next_actions(
         let dry_run_command = match source_kind {
             Some("stdin") => "cat <path-to-input.json> | driggsby import create -".to_string(),
             Some("file") => source_ref
-                .map(|path| format!("driggsby import create {path}"))
+                .map(build_create_command_with_path)
                 .unwrap_or_else(|| "driggsby import create <path>".to_string()),
             _ => "driggsby import create <path>".to_string(),
         };
@@ -391,17 +391,19 @@ fn build_next_actions(
     if duplicate_total > 0
         && let Some(id) = import_id
     {
+        let command = build_import_command_with_id("duplicates", id);
         other_actions.push(ImportAction {
             label: "View duplicates".to_string(),
-            command: format!("driggsby import duplicates {id}"),
+            command,
             risk: None,
         });
     }
 
     if let Some(id) = import_id {
+        let command = build_import_command_with_id("undo", id);
         other_actions.push(ImportAction {
             label: "Undo this import (destructive)".to_string(),
-            command: format!("driggsby import undo {id}"),
+            command,
             risk: Some("destructive".to_string()),
         });
     }
@@ -413,4 +415,31 @@ fn build_next_actions(
         },
         other_actions,
     )
+}
+
+fn build_create_command_with_path(path: &str) -> String {
+    if let Some(quoted_path) = quote_shell_arg(path) {
+        format!("driggsby import create {quoted_path}")
+    } else {
+        "driggsby import create <path>".to_string()
+    }
+}
+
+fn build_import_command_with_id(action: &str, import_id: &str) -> String {
+    let base_command = format!("driggsby import {action}");
+
+    if let Some(quoted_id) = quote_shell_arg(import_id) {
+        format!("{base_command} {quoted_id}")
+    } else {
+        format!("{base_command} <import-id>")
+    }
+}
+
+fn quote_shell_arg(value: &str) -> Option<String> {
+    if value.chars().any(char::is_control) {
+        return None;
+    }
+    shlex::try_quote(value)
+        .ok()
+        .map(|quoted| quoted.into_owned())
 }

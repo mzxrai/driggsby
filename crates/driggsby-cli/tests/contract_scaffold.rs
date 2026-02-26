@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -138,6 +138,51 @@ fn parse_json(body: &str) -> Value {
     Value::Null
 }
 
+fn assert_pipe_close_does_not_panic(args: &[&str], expect_success: bool) {
+    let home = unique_test_home();
+    let mut producer = Command::new(env!("CARGO_BIN_EXE_driggsby"));
+    producer.args(args);
+    producer.env("DRIGGSBY_HOME", &home);
+    producer.stdout(Stdio::piped());
+    producer.stderr(Stdio::piped());
+
+    let producer_spawn = producer.spawn();
+    assert!(producer_spawn.is_ok());
+    if let Ok(mut producer_child) = producer_spawn {
+        let producer_stdout = producer_child.stdout.take();
+        let producer_stderr = producer_child.stderr.take();
+        assert!(producer_stdout.is_some());
+        assert!(producer_stderr.is_some());
+
+        if let Some(stdout_pipe) = producer_stdout {
+            let mut reader = BufReader::new(stdout_pipe);
+            let mut first_line = String::new();
+            let read_result = reader.read_line(&mut first_line);
+            assert!(read_result.is_ok());
+            assert!(!first_line.is_empty());
+            drop(reader);
+        }
+
+        let status = producer_child.wait();
+        assert!(status.is_ok());
+        if let Ok(exit_status) = status {
+            assert_eq!(exit_status.success(), expect_success);
+        }
+
+        if let Some(mut stderr_pipe) = producer_stderr {
+            let mut stderr_bytes = Vec::new();
+            let stderr_read = stderr_pipe.read_to_end(&mut stderr_bytes);
+            assert!(stderr_read.is_ok());
+            let stderr = String::from_utf8(stderr_bytes);
+            assert!(stderr.is_ok());
+            if let Ok(stderr_text) = stderr {
+                assert!(!stderr_text.contains("Broken pipe"));
+                assert!(!stderr_text.contains("failed printing to stdout"));
+            }
+        }
+    }
+}
+
 fn assert_text_error_contract(body: &str, code: &str) {
     assert!(body.contains("Something went wrong, but it's easy to fix."));
     assert!(body.contains(&format!("  Error:    {code}")));
@@ -169,6 +214,21 @@ fn help_and_version_return_success_output() {
     let (version_ok, version_body, _) = run_cli(&["--version"]);
     assert!(version_ok);
     assert_eq!(version_body.trim(), "driggsby 0.1.0");
+}
+
+#[test]
+fn help_output_pipe_close_does_not_panic() {
+    assert_pipe_close_does_not_panic(&["import", "create", "--help"], true);
+}
+
+#[test]
+fn success_output_pipe_close_does_not_panic() {
+    assert_pipe_close_does_not_panic(&["schema"], true);
+}
+
+#[test]
+fn error_output_pipe_close_does_not_panic() {
+    assert_pipe_close_does_not_panic(&["import", "create", "--nope"], false);
 }
 
 #[test]

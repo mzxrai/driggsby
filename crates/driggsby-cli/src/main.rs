@@ -1,11 +1,13 @@
 mod cli;
 mod dispatch;
 mod output;
+mod stdout_io;
 
 use std::process::ExitCode;
 
 use clap::{Parser, error::ErrorKind};
 use driggsby_client::ClientError;
+use stdout_io::write_stdout_text;
 
 const ROOT_HELP: &str = "Driggsby - personal finance intelligence layer
 
@@ -62,7 +64,9 @@ fn main() -> ExitCode {
 fn run() -> Result<ExitCode, ExitCode> {
     let raw_args = std::env::args().collect::<Vec<String>>();
     if raw_args.len() == 1 {
-        print!("{ROOT_HELP}");
+        if write_stdout_text(ROOT_HELP).is_err() {
+            return Err(ExitCode::from(2));
+        }
         return Ok(ExitCode::SUCCESS);
     }
     let parsed = cli::Cli::try_parse();
@@ -80,12 +84,14 @@ fn run() -> Result<ExitCode, ExitCode> {
                     ErrorKind::DisplayHelp | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
                 ) {
                     if is_top_level_help_request(&raw_args) {
-                        print!("{TOP_LEVEL_HELP}");
-                    } else {
-                        print!("{err}");
+                        if write_stdout_text(TOP_LEVEL_HELP).is_err() {
+                            return Err(ExitCode::from(2));
+                        }
+                    } else if write_stdout_text(&err.to_string()).is_err() {
+                        return Err(ExitCode::from(2));
                     }
-                } else {
-                    print!("{err}");
+                } else if write_stdout_text(&err.to_string()).is_err() {
+                    return Err(ExitCode::from(2));
                 }
                 return Ok(ExitCode::SUCCESS);
             }

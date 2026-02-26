@@ -221,9 +221,15 @@ fn dry_run_does_not_write_import_or_transactions() {
                 assert_eq!(value["ok"], Value::Bool(true));
                 assert_eq!(value["data"]["dry_run"], Value::Bool(true));
                 assert!(value["data"]["import_id"].is_null());
+                let source_text = source_path.display().to_string();
+                let quoted = shlex::try_quote(&source_text);
+                assert!(quoted.is_ok());
                 assert_eq!(
                     value["data"]["next_step"]["command"],
-                    Value::String(format!("driggsby import create {}", source_path.display()))
+                    Value::String(format!(
+                        "driggsby import create {}",
+                        quoted.unwrap_or_default()
+                    ))
                 );
                 let commands = action_commands(&value);
                 assert!(commands.is_empty());
@@ -265,6 +271,70 @@ fn dry_run_with_stdin_uses_stdin_commit_next_step() {
                     )
                 );
                 assert!(action_commands(&value).is_empty());
+            }
+        }
+    }
+}
+
+#[test]
+fn dry_run_file_path_with_shell_chars_quotes_next_step_command() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("my file $(echo pwned).csv");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+
+        write_file(
+            &source_path,
+            "statement_id,account_key,posted_at,amount,currency,description\nchase_checking_1234_2026-01-31,chase_checking_1234,2026-01-03,-9.99,USD,COFFEE\n",
+        );
+
+        let result = run_import(&home, Some(&source_path), true, None);
+        assert!(result.is_ok());
+        if let Ok(success) = result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                let source_text = source_path.display().to_string();
+                let quoted = shlex::try_quote(&source_text);
+                assert!(quoted.is_ok());
+                assert_eq!(
+                    value["data"]["next_step"]["command"],
+                    Value::String(format!(
+                        "driggsby import create {}",
+                        quoted.unwrap_or_default()
+                    ))
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn dry_run_file_path_with_control_chars_uses_placeholder_command() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("line\nbreak.csv");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+
+        write_file(
+            &source_path,
+            "statement_id,account_key,posted_at,amount,currency,description\nchase_checking_1234_2026-01-31,chase_checking_1234,2026-01-03,-9.99,USD,COFFEE\n",
+        );
+
+        let result = run_import(&home, Some(&source_path), true, None);
+        assert!(result.is_ok());
+        if let Ok(success) = result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                assert_eq!(
+                    value["data"]["next_step"]["command"],
+                    Value::String("driggsby import create <path>".to_string())
+                );
             }
         }
     }
