@@ -102,8 +102,17 @@ fn parse_csv(content: &str) -> ClientResult<Vec<ParsedRow>> {
         .collect::<Vec<String>>();
 
     if !headers_are_valid(&headers) {
+        let required_headers = required_import_field_names()
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect::<Vec<String>>();
+        let optional_headers = optional_import_field_names()
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect::<Vec<String>>();
         return Err(ClientError::import_schema_mismatch(
-            expected_headers(),
+            required_headers,
+            optional_headers,
             headers,
         ));
     }
@@ -212,16 +221,4 @@ fn headers_are_valid(actual_headers: &[String]) -> bool {
     }
 
     true
-}
-
-fn expected_headers() -> Vec<String> {
-    let required_fields = required_import_field_names();
-    let optional_fields = optional_import_field_names();
-
-    let mut headers = required_fields
-        .iter()
-        .map(|value| value.to_string())
-        .collect::<Vec<String>>();
-    headers.extend(optional_fields.iter().map(|value| value.to_string()));
-    headers
 }

@@ -97,7 +97,7 @@ fn pending_migration_applies_exactly_once() {
             assert!(connection.is_ok());
             if let Ok(conn) = connection {
                 let first_version = user_version(&conn);
-                assert_eq!(first_version, Some(3));
+                assert_eq!(first_version, Some(4));
             }
         }
 
@@ -108,7 +108,7 @@ fn pending_migration_applies_exactly_once() {
             assert!(connection.is_ok());
             if let Ok(conn) = connection {
                 let second_version = user_version(&conn);
-                assert_eq!(second_version, Some(3));
+                assert_eq!(second_version, Some(4));
             }
         }
     }

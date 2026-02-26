@@ -110,7 +110,7 @@ pub struct ImportDuplicateSummary {
 pub struct ImportDuplicateRow {
     pub source_row_index: i64,
     pub dedupe_reason: String,
-    pub statement_id: String,
+    pub statement_id: Option<String>,
     pub account_key: String,
     pub posted_at: String,
     pub amount: f64,

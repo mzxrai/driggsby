@@ -118,7 +118,7 @@ fn touched_key_counts_for_import(
 ) -> ClientResult<BTreeMap<String, i64>> {
     let mut statement = transaction
         .prepare(
-            "SELECT statement_id, account_key, posted_at, amount, currency, description, external_id
+            "SELECT statement_id, dedupe_scope_id, account_key, posted_at, amount, currency, description, external_id
              FROM internal_transactions
              WHERE import_id = ?1",
         )
@@ -127,13 +127,14 @@ fn touched_key_counts_for_import(
     let rows = statement
         .query_map(params![import_id], |row| {
             Ok(CanonicalTransaction {
-                statement_id: row.get(0)?,
-                account_key: row.get(1)?,
-                posted_at: row.get(2)?,
-                amount: row.get(3)?,
-                currency: row.get(4)?,
-                description: row.get(5)?,
-                external_id: row.get(6)?,
+                statement_id: row.get::<_, Option<String>>(0)?,
+                dedupe_scope_id: row.get(1)?,
+                account_key: row.get(2)?,
+                posted_at: row.get(3)?,
+                amount: row.get(4)?,
+                currency: row.get(5)?,
+                description: row.get(6)?,
+                external_id: row.get(7)?,
                 merchant: None,
                 category: None,
             })
@@ -162,6 +163,7 @@ fn candidates_for_key(
                 c.candidate_id,
                 c.import_id,
                 c.statement_id,
+                c.dedupe_scope_id,
                 c.account_key,
                 c.posted_at,
                 c.amount,
@@ -188,15 +190,16 @@ fn candidates_for_key(
                 candidate_id: row.get(0)?,
                 import_id: row.get(1)?,
                 row: CanonicalTransaction {
-                    statement_id: row.get(2)?,
-                    account_key: row.get(3)?,
-                    posted_at: row.get(4)?,
-                    amount: row.get(5)?,
-                    currency: row.get(6)?,
-                    description: row.get(7)?,
-                    external_id: row.get(8)?,
-                    merchant: row.get(9)?,
-                    category: row.get(10)?,
+                    statement_id: row.get::<_, Option<String>>(2)?,
+                    dedupe_scope_id: row.get(3)?,
+                    account_key: row.get(4)?,
+                    posted_at: row.get(5)?,
+                    amount: row.get(6)?,
+                    currency: row.get(7)?,
+                    description: row.get(8)?,
+                    external_id: row.get(9)?,
+                    merchant: row.get(10)?,
+                    category: row.get(11)?,
                 },
             })
         })
@@ -222,6 +225,7 @@ fn promote_candidate(
                 txn_id,
                 import_id,
                 statement_id,
+                dedupe_scope_id,
                 account_key,
                 posted_at,
                 amount,
@@ -230,11 +234,12 @@ fn promote_candidate(
                 external_id,
                 merchant,
                 category
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 &txn_id,
                 &candidate.import_id,
                 &candidate.row.statement_id,
+                &candidate.row.dedupe_scope_id,
                 &candidate.row.account_key,
                 &candidate.row.posted_at,
                 candidate.row.amount,

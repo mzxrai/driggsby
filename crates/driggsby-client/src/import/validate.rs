@@ -9,7 +9,10 @@ pub(crate) struct ValidatedRows {
     pub(crate) summary: ImportSummary,
 }
 
-pub(crate) fn validate_rows(parsed_rows: Vec<ParsedRow>) -> ClientResult<ValidatedRows> {
+pub(crate) fn validate_rows(
+    parsed_rows: Vec<ParsedRow>,
+    statement_scope_id: &str,
+) -> ClientResult<ValidatedRows> {
     let total_rows = parsed_rows.len();
     let mut rows = Vec::new();
     let mut issues = Vec::new();
@@ -17,19 +20,18 @@ pub(crate) fn validate_rows(parsed_rows: Vec<ParsedRow>) -> ClientResult<Validat
     for raw in parsed_rows {
         let mut row_issues = Vec::new();
 
-        let statement_id = validate_required_string(
-            raw.row,
-            "statement_id",
-            raw.statement_id,
-            &mut row_issues,
-            "statement_id must be present and non-empty.",
-        );
         let account_key = validate_required_string(
             raw.row,
             "account_key",
             raw.account_key,
             &mut row_issues,
             "account_key must be present and non-empty.",
+        );
+        let statement_id = normalize_optional(raw.statement_id);
+        let dedupe_scope_id = resolve_dedupe_scope_id(
+            account_key.as_deref(),
+            statement_id.as_deref(),
+            statement_scope_id,
         );
         let posted_at = validate_posted_at(raw.row, raw.posted_at, &mut row_issues);
         let amount = validate_amount(raw.row, raw.amount, &mut row_issues);
@@ -47,7 +49,8 @@ pub(crate) fn validate_rows(parsed_rows: Vec<ParsedRow>) -> ClientResult<Validat
 
         if row_issues.is_empty() {
             rows.push(CanonicalTransaction {
-                statement_id: statement_id.unwrap_or_default(),
+                statement_id,
+                dedupe_scope_id: dedupe_scope_id.unwrap_or_default(),
                 account_key: account_key.unwrap_or_default(),
                 posted_at: posted_at.unwrap_or_default(),
                 amount: amount.unwrap_or_default(),
@@ -79,6 +82,18 @@ pub(crate) fn validate_rows(parsed_rows: Vec<ParsedRow>) -> ClientResult<Validat
     }
 
     Ok(ValidatedRows { rows, summary })
+}
+
+fn resolve_dedupe_scope_id(
+    account_key: Option<&str>,
+    statement_id: Option<&str>,
+    statement_scope_id: &str,
+) -> Option<String> {
+    let account_key = account_key?;
+    if let Some(statement_id) = statement_id {
+        return Some(format!("stmt|{}|{}", account_key, statement_id));
+    }
+    Some(format!("gen|{}|{}", statement_scope_id, account_key))
 }
 
 fn validate_required_string(

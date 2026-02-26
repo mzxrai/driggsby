@@ -77,20 +77,27 @@ impl ClientError {
     }
 
     pub fn import_schema_mismatch(
-        expected_headers: Vec<String>,
+        required_headers: Vec<String>,
+        optional_headers: Vec<String>,
         actual_headers: Vec<String>,
     ) -> Self {
+        let mut expected_headers = required_headers.clone();
+        expected_headers.extend(optional_headers.clone());
+
         Self::new(
             "import_schema_mismatch",
-            "CSV headers do not match the required import schema.",
+            "CSV headers do not satisfy the import schema.",
             vec![
-                "Run `driggsby import create --help` and read the required import fields."
+                "Include all required headers; optional headers may be omitted.".to_string(),
+                "Do not include unknown headers.".to_string(),
+                "Run `driggsby import create --help` to review required and optional fields."
                     .to_string(),
-                "Update your CSV headers to match exactly.".to_string(),
                 "Rerun `driggsby import create --dry-run <path>`.".to_string(),
             ],
         )
         .with_import_help_data(json!({
+            "required_headers": required_headers,
+            "optional_headers": optional_headers,
             "expected_headers": expected_headers,
             "actual_headers": actual_headers,
         }))

@@ -200,7 +200,9 @@ fn import_create_help_shows_workflow_and_schema() {
     assert!(body.contains("YYYY-MM-DD"));
     assert!(body.contains("negative = money out"));
     assert!(body.contains("positive = money in"));
-    assert!(body.contains("Credit card"));
+    assert!(body.contains("statement_id (optional):"));
+    assert!(body.contains("<account_key>_<statement_end_YYYY-MM-DD>"));
+    assert!(body.contains("Never reuse the same `statement_id`"));
 }
 
 #[test]
@@ -493,13 +495,38 @@ fn import_undo_json_runtime_error_uses_universal_error_shape() {
 }
 
 #[test]
-fn import_create_json_validation_error_uses_nested_error_data() {
+fn import_create_json_missing_statement_id_is_accepted() {
     let home = unique_test_home();
     let source_path = write_source_file(
         &home,
         "missing-statement-id.json",
         r#"[
   {"account_key":"chase_checking_1234","posted_at":"2026-03-02","amount":-88.00,"currency":"USD","description":"UNDO"}
+]"#,
+    );
+    let source_arg = source_path.display().to_string();
+    let (ok, body) = run_cli_in_home_with_input(
+        &home,
+        &["import", "create", "--dry-run", &source_arg, "--json"],
+        None,
+    );
+    assert!(ok);
+    let payload = parse_json(&body);
+    assert_eq!(payload["ok"], Value::Bool(true));
+    assert_eq!(payload["data"]["summary"]["rows_read"], Value::from(1));
+    assert_eq!(payload["data"]["summary"]["rows_valid"], Value::from(1));
+    assert_eq!(payload["data"]["summary"]["rows_invalid"], Value::from(0));
+    assert!(payload.get("error").is_none());
+}
+
+#[test]
+fn import_create_json_validation_error_for_missing_account_key_uses_nested_error_data() {
+    let home = unique_test_home();
+    let source_path = write_source_file(
+        &home,
+        "missing-account-key.json",
+        r#"[
+  {"posted_at":"2026-03-02","amount":-88.00,"currency":"USD","description":"UNDO"}
 ]"#,
     );
     let source_arg = source_path.display().to_string();
@@ -518,7 +545,7 @@ fn import_create_json_validation_error_uses_nested_error_data() {
     assert!(payload["error"]["data"]["issues"].is_array());
     assert_eq!(
         payload["error"]["data"]["issues"][0]["field"],
-        Value::String("statement_id".to_string())
+        Value::String("account_key".to_string())
     );
     assert_eq!(
         payload["error"]["data"]["issues"][0]["code"],

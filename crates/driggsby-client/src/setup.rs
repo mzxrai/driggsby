@@ -28,10 +28,11 @@ const INTERNAL_IMPORT_RUNS_COLUMNS: [&str; 12] = [
     "source_kind",
     "source_ref",
 ];
-const INTERNAL_TRANSACTIONS_COLUMNS: [&str; 11] = [
+const INTERNAL_TRANSACTIONS_COLUMNS: [&str; 12] = [
     "txn_id",
     "import_id",
     "statement_id",
+    "dedupe_scope_id",
     "account_key",
     "posted_at",
     "amount",
@@ -41,11 +42,12 @@ const INTERNAL_TRANSACTIONS_COLUMNS: [&str; 11] = [
     "merchant",
     "category",
 ];
-const INTERNAL_TRANSACTION_DEDUPE_CANDIDATES_COLUMNS: [&str; 19] = [
+const INTERNAL_TRANSACTION_DEDUPE_CANDIDATES_COLUMNS: [&str; 20] = [
     "candidate_id",
     "import_id",
     "dedupe_key",
     "statement_id",
+    "dedupe_scope_id",
     "account_key",
     "posted_at",
     "amount",

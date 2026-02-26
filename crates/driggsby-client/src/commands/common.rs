@@ -1,7 +1,6 @@
 use crate::contracts::types::{DataRange, DataRangeHint, PublicView, ViewColumn};
 
-const REQUIRED_IMPORT_FIELDS: [(&str, &str); 6] = [
-    ("statement_id", "string"),
+const REQUIRED_IMPORT_FIELDS: [(&str, &str); 5] = [
     ("account_key", "string"),
     ("posted_at", "date"),
     ("amount", "number"),
@@ -9,7 +8,8 @@ const REQUIRED_IMPORT_FIELDS: [(&str, &str); 6] = [
     ("description", "string"),
 ];
 
-const OPTIONAL_IMPORT_FIELDS: [(&str, &str); 3] = [
+const OPTIONAL_IMPORT_FIELDS: [(&str, &str); 4] = [
+    ("statement_id", "string"),
     ("external_id", "string"),
     ("merchant", "string|null"),
     ("category", "string|null"),
@@ -36,7 +36,7 @@ pub fn public_view_contracts() -> Vec<PublicView> {
             columns: vec![
                 view_column("txn_id", "text"),
                 view_column("import_id", "text"),
-                view_column("statement_id", "text"),
+                view_column("statement_id", "text|null"),
                 view_column("account_key", "text"),
                 view_column("posted_at", "date"),
                 view_column("amount", "real"),

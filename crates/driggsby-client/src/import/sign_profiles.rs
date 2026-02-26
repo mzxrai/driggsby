@@ -121,7 +121,8 @@ mod tests {
     fn incoming_sign_count_map_tracks_positive_and_negative_amounts() {
         let rows = [
             CanonicalTransaction {
-                statement_id: "acct_1_2026-01-31".to_string(),
+                statement_id: Some("acct_1_2026-01-31".to_string()),
+                dedupe_scope_id: "stmt|acct_1|acct_1_2026-01-31".to_string(),
                 account_key: "acct_1".to_string(),
                 posted_at: "2026-01-01".to_string(),
                 amount: -10.0,
@@ -132,7 +133,8 @@ mod tests {
                 category: None,
             },
             CanonicalTransaction {
-                statement_id: "acct_1_2026-01-31".to_string(),
+                statement_id: Some("acct_1_2026-01-31".to_string()),
+                dedupe_scope_id: "stmt|acct_1|acct_1_2026-01-31".to_string(),
                 account_key: "acct_1".to_string(),
                 posted_at: "2026-01-02".to_string(),
                 amount: 8.0,
@@ -143,7 +145,8 @@ mod tests {
                 category: None,
             },
             CanonicalTransaction {
-                statement_id: "acct_2_2026-01-31".to_string(),
+                statement_id: Some("acct_2_2026-01-31".to_string()),
+                dedupe_scope_id: "stmt|acct_2|acct_2_2026-01-31".to_string(),
                 account_key: "acct_2".to_string(),
                 posted_at: "2026-01-03".to_string(),
                 amount: 0.0,

@@ -453,7 +453,7 @@ fn render_duplicate_row(row: &Value, ordinal: usize) -> Vec<String> {
     let statement_id = row
         .get("statement_id")
         .and_then(Value::as_str)
-        .unwrap_or("unknown");
+        .unwrap_or("(none)");
     let account_key = row
         .get("account_key")
         .and_then(Value::as_str)

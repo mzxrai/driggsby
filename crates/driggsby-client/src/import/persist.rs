@@ -17,6 +17,7 @@ pub(crate) struct PersistResult {
 }
 
 pub(crate) struct PersistInput<'a> {
+    pub(crate) import_id: &'a str,
     pub(crate) candidate_rows: &'a [BatchRow],
     pub(crate) duplicate_rows: &'a [DuplicateRecord],
     pub(crate) rows_read: i64,
@@ -31,7 +32,6 @@ pub(crate) fn persist_import(
     db_path: &Path,
     input: PersistInput<'_>,
 ) -> ClientResult<PersistResult> {
-    let import_id = format!("imp_{}", Ulid::new());
     let timestamp = now_timestamp();
 
     let transaction = connection
@@ -40,12 +40,18 @@ pub(crate) fn persist_import(
 
     let mut inserted = 0_i64;
     for batch_row in input.candidate_rows {
-        insert_canonical_row(&transaction, db_path, &import_id, &batch_row.row)?;
+        insert_canonical_row(&transaction, db_path, input.import_id, &batch_row.row)?;
         inserted += 1;
     }
 
     for duplicate_row in input.duplicate_rows {
-        insert_dedupe_candidate(&transaction, db_path, &import_id, duplicate_row, &timestamp)?;
+        insert_dedupe_candidate(
+            &transaction,
+            db_path,
+            input.import_id,
+            duplicate_row,
+            &timestamp,
+        )?;
     }
 
     let deduped_total = input.duplicate_rows.len() as i64;
@@ -66,7 +72,7 @@ pub(crate) fn persist_import(
                 source_ref
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
-                &import_id,
+                input.import_id,
                 "committed",
                 &timestamp,
                 &timestamp,
@@ -86,7 +92,7 @@ pub(crate) fn persist_import(
         .map_err(|error| map_sqlite_error(db_path, &error))?;
 
     Ok(PersistResult {
-        import_id,
+        import_id: input.import_id.to_string(),
         inserted,
         duplicate_rows: input.duplicate_rows.to_vec(),
     })
@@ -105,6 +111,7 @@ fn insert_canonical_row(
                 txn_id,
                 import_id,
                 statement_id,
+                dedupe_scope_id,
                 account_key,
                 posted_at,
                 amount,
@@ -113,11 +120,12 @@ fn insert_canonical_row(
                 external_id,
                 merchant,
                 category
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 &txn_id,
                 import_id,
                 &row.statement_id,
+                &row.dedupe_scope_id,
                 &row.account_key,
                 &row.posted_at,
                 row.amount,
@@ -125,7 +133,7 @@ fn insert_canonical_row(
                 &row.description,
                 &row.external_id,
                 &row.merchant,
-                &row.category
+                &row.category,
             ],
         )
         .map_err(|error| map_sqlite_error(db_path, &error))?;
@@ -148,6 +156,7 @@ fn insert_dedupe_candidate(
                 import_id,
                 dedupe_key,
                 statement_id,
+                dedupe_scope_id,
                 account_key,
                 posted_at,
                 amount,
@@ -163,12 +172,13 @@ fn insert_dedupe_candidate(
                 matched_batch_row_index,
                 created_at,
                 promoted_txn_id
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, NULL)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, NULL)",
             params![
                 candidate_id,
                 import_id,
                 key,
                 &duplicate_row.row.statement_id,
+                &duplicate_row.row.dedupe_scope_id,
                 &duplicate_row.row.account_key,
                 &duplicate_row.row.posted_at,
                 duplicate_row.row.amount,
