@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit blocked: 'gitleaks' is required"
+  echo "Install: brew install gitleaks"
+  exit 1
+fi
+
+gitleaks git --staged --no-banner --redact --config .gitleaks.toml

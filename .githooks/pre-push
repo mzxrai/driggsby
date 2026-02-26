@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-push blocked: 'gitleaks' is required"
+  echo "Install: brew install gitleaks"
+  exit 1
+fi
+
+echo "Running gitleaks history scan before push..."
+gitleaks git --no-banner --redact --config .gitleaks.toml --log-opts="--all --full-history"

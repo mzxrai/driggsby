@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "crates/driggsby-client",
+    "crates/driggsby-cli",
+]
+resolver = "2"

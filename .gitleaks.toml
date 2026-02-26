@@ -1,0 +1,37 @@
+title = "Driggsby Gitleaks Policy"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Project-wide allowlist for known-safe placeholders"
+paths = [
+  '''(?i)(^|/)\.env\.(example|sample|template)$''',
+]
+regexes = [
+  '''(?i)\bexample(_|-)?(key|token|secret)\b''',
+]
+
+[[rules]]
+id = "forbidden-env-file"
+description = "Block committing runtime env files (except explicit templates)"
+path = '''(?i)(^|/)\.env($|\.[^/]+$)'''
+regex = '''.+'''
+secretGroup = 0
+entropy = 0.0
+
+[[rules]]
+id = "forbidden-credential-file"
+description = "Block committing local credential/key material files"
+path = '''(?i)(^|/)(\.envrc$|\.direnv/.*|\.aws/(credentials|config)$|\.netrc$|\.pypirc$|id_(rsa|dsa|ecdsa|ed25519)$|.*\.(pem|key|p8|p12|pfx|crt|cer|der)$)'''
+regex = '''.+'''
+secretGroup = 0
+entropy = 0.0
+
+[[rules]]
+id = "forbidden-local-database-dump-file"
+description = "Block committing local database and dump files"
+path = '''(?i)(^|/).*\.(sqlite|sqlite3|db|dump|bak)$'''
+regex = '''.+'''
+secretGroup = 0
+entropy = 0.0
