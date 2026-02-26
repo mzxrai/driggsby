@@ -1,0 +1,68 @@
+name: Security Suite
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "34 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@05fe4576374b728f0c523d6a13d64c25081e0803
+        with:
+          fail-on-severity: high
+
+  cargo-deny:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Ensure Rust toolchain is available
+        run: |
+          set -euo pipefail
+          if ! command -v cargo >/dev/null 2>&1; then
+            curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+            source "$HOME/.cargo/env"
+          fi
+          cargo --version
+
+      - name: Install cargo-deny
+        run: |
+          set -euo pipefail
+          cargo install --locked cargo-deny
+
+      - name: Run cargo-deny advisories
+        run: |
+          set -euo pipefail
+          cargo deny check advisories
+
+  trivy-fs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@e368e328979b113139d6f9068e03accaed98a518
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          skip-dirs: target
+          exit-code: "1"

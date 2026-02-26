@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if ! command -v gitleaks >/dev/null 2>&1; then
-  echo "pre-push blocked: 'gitleaks' is required"
-  echo "Install: brew install gitleaks"
+required_tools=(gitleaks cargo-deny)
+missing_tools=()
+
+for tool in "${required_tools[@]}"; do
+  if ! command -v "${tool}" >/dev/null 2>&1; then
+    missing_tools+=("${tool}")
+  fi
+done
+
+if [ "${#missing_tools[@]}" -gt 0 ]; then
+  echo "pre-push blocked: missing required security tools: ${missing_tools[*]}"
+  echo "Install with: just security-bootstrap-macos"
   exit 1
 fi
 
 echo "Running gitleaks history scan before push..."
 gitleaks git --no-banner --redact --config .gitleaks.toml --log-opts="--all --full-history"
+
+echo "Running cargo-deny advisory scan before push..."
+cargo deny check advisories

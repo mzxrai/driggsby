@@ -1,0 +1,25 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:10"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:20"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"

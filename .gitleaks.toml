@@ -36,7 +36,7 @@ entropy = 0.0
 [[rules]]
 id = "forbidden-local-document-export-file"
 description = "Block committing high-risk local document/export file types"
-path = '''(?i)(^|/).*\.(csv|tsv|pdf|xls|xlsx|doc|docx|rtf|numbers)$'''
+path = '''(?i)(^|/)(exports?|reports?|backups?|statements?|data)/.*\.(csv|tsv|pdf|xls|xlsx|doc|docx|rtf|numbers)$'''
 regex = '''.+'''
 secretGroup = 0
 entropy = 0.0

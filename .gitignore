@@ -57,9 +57,9 @@ id_ed25519
 .claude/settings.local.json
 
 # Planning docs (keep directory structure only)
-/docs/plans/*
+/docs/plans/**
 !/docs/plans/.keep
 
 # Temporary working files (keep directory structure only)
-/tmp/*
+/tmp/**
 !/tmp/.keep

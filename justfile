@@ -8,3 +8,9 @@ rust-verify:
     just required-check
     cargo test --all-features
     cargo build
+
+security-bootstrap-macos:
+    bash scripts/security/bootstrap-macos.sh
+
+security-local:
+    bash scripts/security/local-scan.sh --mode full
