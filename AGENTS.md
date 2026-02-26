@@ -7,7 +7,6 @@ If you have any questions as you work, simply stop and ask the user for clarific
 <planning-process>
 When instructed to prepare a plan for the user, follow this structured process:
  
-0. If working on a substantial new feature, run `git worktree add `~/dev/driggsby-worktrees/<feature> -b <feature>`; to return later, run `git worktree list` and `cd` into the directory shown for `<feature>`.
 1. Ask clarification questions where you think the user's request was underspecified, or where significant ambiguity exists that could cause cascading downstream effects.
 2. Do detailed research to compile everything you need to complete the task using one or more dedicated planning subagents. At a minimum, follow this basic procedure:
   - (a) Review the git commit history and the last one or two plan files under `./docs/plans` to understand what was recently implemented and any relevant patterns.
@@ -16,26 +15,26 @@ When instructed to prepare a plan for the user, follow this structured process:
 3. Prepare a detailed plan prescribing the tactical implementation (the plan should not contain the code to be written; instead, it should be a detailed "action plan" for implementation). Examine past plan files for inspiration. Design with "lazy" agents like Claude Code (Anthropic) and Codex (OpenAI) in mind as your primary user, especially for public interfaces -- as such, prioritize ease of use (especially for agents), simplicity, and security. Your goal: build an architecture, and featureset, that agents find (a) useful enough to justify the cost of use, (b) so simple and well-documented that it's actually hard to not get the desired result on the "first shot", and (c) more secure than other options.
 4. For more complex tasks, it may be useful to consult Claude in "agent mode" for its review of your plan, as a "second set of eyes." 
 5. Present your plan to the user, along with any final clarification questions. Perform plan edits as needed based on the user's feedback.
-6. Once the plan is approved and all questions are satisfied, write your plan to a Markdown file, numbered according to our existing pattern/sequence, under `./docs/plans/`. Use Markdown checkboxes for each group of items (you'll check them off as you do the work). If applicable, clearly indicate the git worktree `<feature>` ID you previously selected at the top of the plan file. After you've written the plan file, make a git commit with a helpful commit message.
+6. Once the plan is approved and all questions are satisfied, create a new git worktree/branch starting with the plan numerical ID, `cd` to that worktree, and write your plan to a Markdown file, numbered according to our existing pattern/sequence, under `./docs/plans/`. Use Markdown checkboxes for each group of items (you'll check them off as you do the work). After you've written the plan file, make a git commit with a helpful commit message.
 </planning-process>
 
 <development-process>
 When instructed to execute a specified plan, or implement a feature or task, follow this structured process:
 
-0. If a git worktree `<feature>` ID is specified in the plan file, first run `git worktree list` and `cd` into the directory shown for the specified `<feature>`.
-1. Do detailed research to compile everything you need to complete the task using one or more dedicated research subagents. At a minimum, follow this basic procedure:
+1. If applicable, run `git worktree list` and `cd` into the directory for the corresponding git worktree (it'll be indexed by the plan file number if the user has instructed you to "implement plan X").
+2. Do detailed research to compile everything you need to complete the task using one or more dedicated research subagents. At a minimum, follow this basic procedure:
   - (a) If specified by the user, review the detailed plan file prescribing the implementation roadmap. 
   - (b) Review the git commit history and the last one or two plan files under `./docs/plans` to understand what was recently implemented and any relevant patterns.
   - (c) Review the current repo structure and patterns to understand them prior to implementation. Follow them unless there is a compelling reason not to. **Ensure you don't duplicate existing code or structure**.
   - (d) Read any relevant code or documentation from the repository -- good research upfront prevents errors and pain later and is always worth the time and effort. This is cheap and high-leverage.
-2. *Using our existing testing patterns & structural patterns from the repository*, follow TDD religiously: 
+3. *Using our existing testing patterns & structural patterns from the repository*, follow TDD religiously: 
   - (a) First, implement good tests for the to-be-implemented functionality. Don't over-test.
   - (b) Run the tests & confirm failure.
   - (c) Write the minimal implementation sufficient to pass the tests. It should be correct, clean, typed, idiomatic code, free of code smells, hacks, and future tech debt. Take the time now to do it right.
   - (d) If files or functions are starting to get large, *now* is the time to refactor them. Lean, focused functions and files are the requirement. Check for duplication, dead code, code smells, and long files and functions right now.
   - (e) Run the tests & confirm they pass. If they fail, carefully iterate the implementation until the tests pass, taking care not to make hasty changes "just to get the tests to pass."
   - (f) Check off plan checkboxes (e.g., edit the plan file) as you complete the task. If the plan ends up having a bug, edit the plan file to keep it accurate. The plan file is your source of truth.
-3. Once tests pass, run code review in two stages using subagents. Each stage has two passes: `primary` and `adversarial`.
+4. Once tests pass, run code review in two stages using subagents. Each stage has two passes: `primary` and `adversarial`.
   - Shared review contract (applies to every pass):
     - Response format: Markdown with embedded code blocks/JSON as needed
     - Required output fields: `stage`, `verdict`, `findings`, `checks_run`, `confidence`
@@ -59,12 +58,12 @@ When instructed to execute a specified plan, or implement a feature or task, fol
       - Modularity: are responsibilities split cleanly across files/functions?
       - File growth discipline: did the agent make already-long files longer without strong justification?
       - Agent inspectability: is the code easy for agents to read, navigate, and safely edit?
-4. Fix any `high_friction+` issues from `agentic_ux` review and any `medium+` issues from `verification` review; optionally fix lower-priority issues when they are easy wins. If additional review rounds are needed, give the reviewer specific context on the fixes you made. Prefer a single focused reviewer for in-cycle review rounds beyond round 1.
-5. Perform a final sweeping code review using 1-2 subagents, re-running all tests and (for Rust code changes) run `just required-check`.
-6. Run any sanity/smoke checks helpful to ensure the feature "truly does work," not just passes automated tests. In some cases, this may include designing a small "lab test" scenario representing real-world use. Goal: perform testing similar to the manual punch-button testing that a human user might perform.
-7. Run the "closeout procedure": update the plan file, marking off all completed checkboxes. Once the full plan file is complete, add an "executive summary" section at the bottom (format for exec. summary only: list items; no checkboxes needed), with a description of (a) the key points of what was done, (b) key decisions made, including basic justification for each, (c) any information or tips helpful for the next agent that works on the project, including any unaddressed concerns, gotchas, or issues the agent should know about.
-8. Once the code satisfies the spec, passes all tests, and passes code review, run `just rust-verify` (hard gate), then make a git commit with a helpful commit message. `just rust-verify` is the final Rust gate and should be used instead of stacking duplicate Rust verification commands.
-9. Review the full diff against main, generate a clear, specific PR title and a structured description explaining what changed, why, risks, and how it was tested, then run `gh pr create --base main --head <branch> --title "<title>" --body "<body>"`.
+5. Fix any `high_friction+` issues from `agentic_ux` review and any `medium+` issues from `verification` review; optionally fix lower-priority issues when they are easy wins. If additional review rounds are needed, give the reviewer specific context on the fixes you made. Prefer a single focused reviewer for in-cycle review rounds beyond round 1.
+6. Perform a final sweeping code review using 1-2 subagents, re-running all tests and (for Rust code changes) run `just required-check`.
+7. Run any sanity/smoke checks helpful to ensure the feature "truly does work," not just passes automated tests. In some cases, this may include designing a small "lab test" scenario representing real-world use. Goal: perform testing similar to the manual punch-button testing that a human user might perform.
+8. Run the "closeout procedure": update the plan file, marking off all completed checkboxes. Once the full plan file is complete, add an "executive summary" section at the bottom (format for exec. summary only: list items; no checkboxes needed), with a description of (a) the key points of what was done, (b) key decisions made, including basic justification for each, (c) any information or tips helpful for the next agent that works on the project, including any unaddressed concerns, gotchas, or issues the agent should know about.
+9. Once the code satisfies the spec, passes all tests, and passes code review, run `just rust-verify` (hard gate), then make a git commit with a helpful commit message. `just rust-verify` is the final Rust gate and should be used instead of stacking duplicate Rust verification commands.
+10. Review the full diff against main, generate a clear, specific PR title and a structured description explaining what changed, why, risks, and how it was tested, then run `gh pr create --base main --head <branch> --title "<title>" --body "<body>"`.
 </development-process>
 
 <just-command-rollups>
