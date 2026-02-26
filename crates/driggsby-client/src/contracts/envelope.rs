@@ -16,8 +16,6 @@ pub struct SuccessEnvelope {
 pub struct FailureEnvelope {
     pub ok: bool,
     pub error: ErrorContract,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -25,6 +23,8 @@ pub struct ErrorContract {
     pub code: String,
     pub message: String,
     pub recovery_steps: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Value>,
 }
 
 pub fn success<T>(command: &str, data: T) -> ClientResult<SuccessEnvelope>
@@ -48,7 +48,7 @@ pub fn failure_from_error(error: &ClientError) -> FailureEnvelope {
             code: error.code.clone(),
             message: error.message.clone(),
             recovery_steps: error.recovery_steps.clone(),
+            data: error.data.clone(),
         },
-        data: error.data.clone(),
     }
 }

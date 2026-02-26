@@ -431,7 +431,79 @@ fn import_undo_json_runtime_error_uses_universal_error_shape() {
     );
     assert!(payload["error"]["message"].is_string());
     assert!(payload["error"]["recovery_steps"].is_array());
+    assert_eq!(
+        payload["error"]["data"]["import_id"],
+        Value::String("imp_missing".to_string())
+    );
+    assert_eq!(
+        payload["error"]["data"]["help_command"],
+        Value::String("driggsby import create --help".to_string())
+    );
+    assert_eq!(
+        payload["error"]["data"]["help_section_title"],
+        Value::String("Import Troubleshooting".to_string())
+    );
     assert!(payload.get("ok").is_none());
+    assert!(payload.get("data").is_none());
+}
+
+#[test]
+fn import_create_json_validation_error_uses_nested_error_data() {
+    let home = unique_test_home();
+    let source_path = write_source_file(
+        &home,
+        "missing-statement-id.json",
+        r#"[
+  {"account_key":"chase_checking_1234","posted_at":"2026-03-02","amount":-88.00,"currency":"USD","description":"UNDO"}
+]"#,
+    );
+    let source_arg = source_path.display().to_string();
+    let (ok, body) = run_cli_in_home_with_input(
+        &home,
+        &["import", "create", "--dry-run", &source_arg, "--json"],
+        None,
+    );
+    assert!(!ok);
+    let payload = parse_json(&body);
+    assert_eq!(
+        payload["error"]["code"],
+        Value::String("import_validation_failed".to_string())
+    );
+    assert!(payload["error"]["data"]["summary"].is_object());
+    assert!(payload["error"]["data"]["issues"].is_array());
+    assert_eq!(
+        payload["error"]["data"]["issues"][0]["field"],
+        Value::String("statement_id".to_string())
+    );
+    assert_eq!(
+        payload["error"]["data"]["issues"][0]["code"],
+        Value::String("missing_required_field".to_string())
+    );
+    assert!(payload.get("data").is_none());
+}
+
+#[test]
+fn import_create_json_schema_mismatch_error_uses_nested_error_data() {
+    let home = unique_test_home();
+    let source_path = write_source_file(
+        &home,
+        "schema-mismatch.csv",
+        "account,posted_date,amount_usd,description\nx,2026-01-01,-1.00,Test\n",
+    );
+    let source_arg = source_path.display().to_string();
+    let (ok, body) = run_cli_in_home_with_input(
+        &home,
+        &["import", "create", "--dry-run", &source_arg, "--json"],
+        None,
+    );
+    assert!(!ok);
+    let payload = parse_json(&body);
+    assert_eq!(
+        payload["error"]["code"],
+        Value::String("import_schema_mismatch".to_string())
+    );
+    assert!(payload["error"]["data"]["expected_headers"].is_array());
+    assert!(payload["error"]["data"]["actual_headers"].is_array());
     assert!(payload.get("data").is_none());
 }
 
