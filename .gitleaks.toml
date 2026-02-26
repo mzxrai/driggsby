@@ -3,12 +3,6 @@ title = "Driggsby Gitleaks Policy"
 [extend]
 useDefault = true
 
-[allowlist]
-description = "Project-wide allowlist for known-safe placeholders"
-regexes = [
-  '''(?i)\bexample(_|-)?(key|token|secret)\b''',
-]
-
 [[rules]]
 id = "forbidden-env-file"
 description = "Block committing env files"
