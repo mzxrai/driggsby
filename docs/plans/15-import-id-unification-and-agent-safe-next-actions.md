@@ -99,7 +99,7 @@ Proposed JSON shape (illustrative):
         "command": "driggsby import duplicates imp_..."
       },
       {
-        "label": "Undo this import",
+        "label": "Undo this import (destructive)",
         "command": "driggsby import undo imp_...",
         "risk": "destructive"
       }
