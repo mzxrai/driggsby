@@ -11,6 +11,7 @@ use crate::state::map_sqlite_error;
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) enum TrackedProperty {
     AccountKey,
+    AccountType,
     Currency,
     Merchant,
     Category,
@@ -20,6 +21,7 @@ impl TrackedProperty {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::AccountKey => "account_key",
+            Self::AccountType => "account_type",
             Self::Currency => "currency",
             Self::Merchant => "merchant",
             Self::Category => "category",
@@ -29,6 +31,7 @@ impl TrackedProperty {
     pub(crate) fn parse(value: &str) -> Option<Self> {
         match value {
             "account_key" => Some(Self::AccountKey),
+            "account_type" => Some(Self::AccountType),
             "currency" => Some(Self::Currency),
             "merchant" => Some(Self::Merchant),
             "category" => Some(Self::Category),
@@ -44,6 +47,7 @@ impl TrackedProperty {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct IncomingUniqueValues {
     pub(crate) account_key: BTreeSet<String>,
+    pub(crate) account_type: BTreeSet<String>,
     pub(crate) currency: BTreeSet<String>,
     pub(crate) merchant: BTreeSet<String>,
     pub(crate) category: BTreeSet<String>,
@@ -59,6 +63,12 @@ pub(crate) fn query_key_inventory(
             connection,
             db_path,
             TrackedProperty::AccountKey,
+            total_rows,
+        )?,
+        account_type: query_property_inventory(
+            connection,
+            db_path,
+            TrackedProperty::AccountType,
             total_rows,
         )?,
         currency: query_property_inventory(
@@ -88,24 +98,44 @@ pub(crate) fn query_property_inventory(
     property: TrackedProperty,
     total_rows: i64,
 ) -> ClientResult<ImportPropertyInventory> {
-    let column = property.column_name();
+    let (null_sql, values_sql) = match property {
+        TrackedProperty::AccountType => (
+            "SELECT COUNT(*)
+             FROM internal_transactions t
+             LEFT JOIN internal_accounts a ON a.account_key = t.account_key
+             WHERE a.account_type IS NULL OR TRIM(a.account_type) = ''"
+                .to_string(),
+            "SELECT a.account_type, COUNT(*)
+             FROM internal_transactions t
+             LEFT JOIN internal_accounts a ON a.account_key = t.account_key
+             WHERE a.account_type IS NOT NULL AND TRIM(a.account_type) <> ''
+             GROUP BY a.account_type
+             ORDER BY a.account_type ASC"
+                .to_string(),
+        ),
+        _ => {
+            let column = property.column_name();
+            (
+                format!(
+                    "SELECT COUNT(*) FROM internal_transactions WHERE {column} IS NULL OR TRIM({column}) = ''"
+                ),
+                format!(
+                    "SELECT {column}, COUNT(*)
+                     FROM internal_transactions
+                     WHERE {column} IS NOT NULL AND TRIM({column}) <> ''
+                     GROUP BY {column}
+                     ORDER BY {column} ASC"
+                ),
+            )
+        }
+    };
 
-    let null_sql = format!(
-        "SELECT COUNT(*) FROM internal_transactions WHERE {column} IS NULL OR TRIM({column}) = ''"
-    );
     let null_count = connection
-        .query_row(&null_sql, [], |row| row.get::<_, i64>(0))
+        .query_row(null_sql.as_str(), [], |row| row.get::<_, i64>(0))
         .map_err(|error| map_sqlite_error(db_path, &error))?;
 
-    let values_sql = format!(
-        "SELECT {column}, COUNT(*)
-         FROM internal_transactions
-         WHERE {column} IS NOT NULL AND TRIM({column}) <> ''
-         GROUP BY {column}
-         ORDER BY {column} ASC"
-    );
     let mut statement = connection
-        .prepare(&values_sql)
+        .prepare(values_sql.as_str())
         .map_err(|error| map_sqlite_error(db_path, &error))?;
 
     let rows = statement
@@ -138,6 +168,7 @@ pub(crate) fn query_property_inventory(
 pub(crate) fn inventory_to_vec(inventory: &ImportKeyInventory) -> Vec<ImportPropertyInventory> {
     vec![
         inventory.account_key.clone(),
+        inventory.account_type.clone(),
         inventory.currency.clone(),
         inventory.merchant.clone(),
         inventory.category.clone(),
@@ -152,6 +183,11 @@ where
 
     for row in rows {
         values.account_key.insert(row.account_key.clone());
+        if let Some(account_type) = row.account_type.as_ref()
+            && !account_type.trim().is_empty()
+        {
+            values.account_type.insert(account_type.clone());
+        }
         values.currency.insert(row.currency.clone());
 
         if let Some(merchant) = row.merchant.as_ref()
@@ -195,6 +231,10 @@ mod tests {
             Some(TrackedProperty::Currency)
         );
         assert_eq!(
+            TrackedProperty::parse("account_type"),
+            Some(TrackedProperty::AccountType)
+        );
+        assert_eq!(
             TrackedProperty::parse("merchant"),
             Some(TrackedProperty::Merchant)
         );
@@ -212,6 +252,7 @@ mod tests {
                 statement_id: Some("acct_1_2026-01-31".to_string()),
                 dedupe_scope_id: "stmt|acct_1|acct_1_2026-01-31".to_string(),
                 account_key: "acct_1".to_string(),
+                account_type: Some("checking".to_string()),
                 posted_at: "2026-01-01".to_string(),
                 amount: -1.0,
                 currency: "USD".to_string(),
@@ -224,6 +265,7 @@ mod tests {
                 statement_id: Some("acct_1_2026-01-31".to_string()),
                 dedupe_scope_id: "stmt|acct_1|acct_1_2026-01-31".to_string(),
                 account_key: "acct_1".to_string(),
+                account_type: Some("checking".to_string()),
                 posted_at: "2026-01-02".to_string(),
                 amount: -2.0,
                 currency: "USD".to_string(),
@@ -236,6 +278,7 @@ mod tests {
                 statement_id: Some("acct_2_2026-01-31".to_string()),
                 dedupe_scope_id: "stmt|acct_2|acct_2_2026-01-31".to_string(),
                 account_key: "acct_2".to_string(),
+                account_type: None,
                 posted_at: "2026-01-03".to_string(),
                 amount: 3.0,
                 currency: "EUR".to_string(),
@@ -250,6 +293,10 @@ mod tests {
         assert_eq!(
             values.account_key.into_iter().collect::<Vec<String>>(),
             vec!["acct_1".to_string(), "acct_2".to_string()]
+        );
+        assert_eq!(
+            values.account_type.into_iter().collect::<Vec<String>>(),
+            vec!["checking".to_string()]
         );
         assert_eq!(
             values.currency.into_iter().collect::<Vec<String>>(),

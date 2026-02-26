@@ -8,6 +8,13 @@ pub enum OutputMode {
 
 pub fn mode_for_command(command: &Commands) -> OutputMode {
     match command {
+        Commands::Accounts { json } => {
+            if *json {
+                OutputMode::Json
+            } else {
+                OutputMode::Text
+            }
+        }
         Commands::Import { command } => match command {
             ImportCommand::Create { json, .. }
             | ImportCommand::List { json }
@@ -94,6 +101,15 @@ mod tests {
     #[test]
     fn mode_uses_json_for_import_keys_uniq_with_json_flag() {
         let parsed = parse_from(["driggsby", "import", "keys", "uniq", "--json"]);
+        assert!(parsed.is_ok());
+        if let Ok(cli) = parsed {
+            assert_eq!(mode_for_command(&cli.command), OutputMode::Json);
+        }
+    }
+
+    #[test]
+    fn mode_uses_json_for_accounts_with_json_flag() {
+        let parsed = parse_from(["driggsby", "accounts", "--json"]);
         assert!(parsed.is_ok());
         if let Ok(cli) = parsed {
             assert_eq!(mode_for_command(&cli.command), OutputMode::Json);

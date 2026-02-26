@@ -269,6 +269,14 @@ mod tests {
                 null_count: 0,
                 total_rows: 25,
             },
+            account_type: ImportPropertyInventory {
+                property: "account_type".to_string(),
+                existing_values: vec!["checking".to_string()],
+                value_counts: Vec::new(),
+                unique_count: 1,
+                null_count: 0,
+                total_rows: 25,
+            },
             currency: ImportPropertyInventory {
                 property: "currency".to_string(),
                 existing_values: vec!["USD".to_string()],
@@ -300,6 +308,7 @@ mod tests {
                 "chase_checking_1234".to_string(),
                 "chase_checkng_1234".to_string(),
             ]),
+            account_type: BTreeSet::from(["checking".to_string()]),
             currency: BTreeSet::from(["EUR".to_string(), "USD".to_string()]),
             merchant: BTreeSet::from(["Existing Merchant".to_string(), "New Merchant".to_string()]),
             category: BTreeSet::from(["Groceries".to_string(), "Travel".to_string()]),
@@ -363,6 +372,14 @@ mod tests {
                 null_count: 0,
                 total_rows: 20,
             },
+            account_type: ImportPropertyInventory {
+                property: "account_type".to_string(),
+                existing_values: vec!["checking".to_string()],
+                value_counts: Vec::new(),
+                unique_count: 1,
+                null_count: 0,
+                total_rows: 20,
+            },
             currency: ImportPropertyInventory {
                 property: "currency".to_string(),
                 existing_values: vec!["USD".to_string()],
@@ -390,6 +407,7 @@ mod tests {
         };
         let incoming_values = IncomingUniqueValues {
             account_key: BTreeSet::from(["acct_1".to_string()]),
+            account_type: BTreeSet::from(["checking".to_string()]),
             currency: BTreeSet::from(["USD".to_string()]),
             merchant: BTreeSet::from(["Shop".to_string()]),
             category: BTreeSet::from(["Groceries".to_string()]),
@@ -472,6 +490,14 @@ mod tests {
                 null_count: 0,
                 total_rows: 0,
             },
+            account_type: ImportPropertyInventory {
+                property: "account_type".to_string(),
+                existing_values: Vec::new(),
+                value_counts: Vec::new(),
+                unique_count: 0,
+                null_count: 0,
+                total_rows: 0,
+            },
             currency: ImportPropertyInventory {
                 property: "currency".to_string(),
                 existing_values: Vec::new(),
@@ -499,6 +525,7 @@ mod tests {
         };
         let incoming_values = IncomingUniqueValues {
             account_key: BTreeSet::from(["acct_new".to_string()]),
+            account_type: BTreeSet::from(["checking".to_string()]),
             currency: BTreeSet::from(["USD".to_string()]),
             merchant: BTreeSet::from(["New Merchant".to_string()]),
             category: BTreeSet::from(["New Category".to_string()]),

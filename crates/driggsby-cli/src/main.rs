@@ -13,6 +13,7 @@ Usage:
   driggsby <command>
 
 Start here:
+  driggsby accounts
   driggsby import create --help
   driggsby schema
 ";
@@ -41,6 +42,7 @@ Need to do custom analysis? Run SQL against our views:
   2. Query `v1_*` views with sqlite3 or any SQL client
 
 Other commands:
+  driggsby accounts                             Show account-level ledger orientation
   driggsby import keys uniq                     List canonical import identifiers
   driggsby import duplicates <id>               Inspect duplicate rows from one import
   driggsby import list                          List past imports
@@ -162,6 +164,7 @@ fn command_path_from_args(raw_args: &[String]) -> Option<String> {
     }
 
     let hint = match non_flags.as_slice() {
+        ["accounts", ..] => Some("accounts"),
         ["import", "keys", "uniq", ..] => Some("import keys uniq"),
         ["import", "create", ..] => Some("import create"),
         ["import", "list", ..] => Some("import list"),

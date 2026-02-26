@@ -4,6 +4,7 @@ use std::io;
 use chrono::{Local, TimeZone};
 use serde_json::Value;
 
+use super::accounts_shared::{AccountTableMode, render_accounts_summary, render_accounts_table};
 use super::format::{self, Align, Column};
 
 pub fn render_import_run(data: &Value) -> io::Result<String> {
@@ -52,6 +53,13 @@ pub fn render_import_run(data: &Value) -> io::Result<String> {
         lines.push(String::new());
     }
     lines.extend(render_duplicate_summary_and_preview(data));
+    if !dry_run {
+        let ledger_now = render_ledger_accounts_section(data);
+        if !ledger_now.is_empty() {
+            lines.push(String::new());
+            lines.extend(ledger_now);
+        }
+    }
 
     if dry_run {
         lines.push(String::new());
@@ -166,6 +174,13 @@ pub fn render_import_list(data: &Value) -> io::Result<String> {
         format::terminal_width(),
         "Import",
     ));
+
+    let account_coverage = render_import_list_account_coverage(&ordered_rows);
+    if !account_coverage.is_empty() {
+        lines.push(String::new());
+        lines.extend(account_coverage);
+    }
+
     Ok(lines.join("\n"))
 }
 
@@ -611,7 +626,13 @@ fn render_inventory_sections(data: &Value) -> Vec<String> {
         return lines;
     };
 
-    let properties = ["account_key", "currency", "merchant", "category"];
+    let properties = [
+        "account_key",
+        "account_type",
+        "currency",
+        "merchant",
+        "category",
+    ];
     for (index, property) in properties.iter().enumerate() {
         let Some(property_map) = inventory.get(*property).and_then(Value::as_object) else {
             continue;
@@ -648,6 +669,81 @@ fn render_inventory_sections(data: &Value) -> Vec<String> {
 
     if lines.is_empty() {
         lines.push("  No existing transaction history found.".to_string());
+    }
+
+    lines
+}
+
+fn render_ledger_accounts_section(data: &Value) -> Vec<String> {
+    let Some(ledger_accounts) = data.get("ledger_accounts").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    let Some(summary) = ledger_accounts.get("summary").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    let rows = ledger_accounts
+        .get("rows")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let mut lines = vec!["Your ledger now:".to_string(), "Summary:".to_string()];
+    lines.extend(render_accounts_summary(summary, 2));
+
+    if rows.is_empty() {
+        return lines;
+    }
+
+    lines.push(String::new());
+    lines.push("Accounts:".to_string());
+    lines.extend(render_accounts_table(&rows, AccountTableMode::Compact));
+
+    lines
+}
+
+fn render_import_list_account_coverage(rows: &[Value]) -> Vec<String> {
+    let mut lines = vec!["Account coverage:".to_string()];
+    let mut rendered_any = false;
+
+    for row in rows {
+        let import_id = row
+            .get("import_id")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let accounts = row
+            .get("accounts")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if accounts.is_empty() {
+            continue;
+        }
+
+        rendered_any = true;
+        lines.push(format!("  {import_id}:"));
+        for account in accounts {
+            let account_key = account
+                .get("account_key")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            let account_type = account
+                .get("account_type")
+                .and_then(Value::as_str)
+                .unwrap_or("untyped");
+            let rows_read = account
+                .get("rows_read")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
+            let inserted = account.get("inserted").and_then(Value::as_i64).unwrap_or(0);
+            let deduped = account.get("deduped").and_then(Value::as_i64).unwrap_or(0);
+            lines.push(format!(
+                "    {account_key} ({account_type}) rows_read={rows_read} inserted={inserted} deduped={deduped}"
+            ));
+        }
+    }
+
+    if !rendered_any {
+        lines.push("  No account coverage recorded yet.".to_string());
     }
 
     lines
@@ -919,6 +1015,104 @@ mod tests {
     }
 
     #[test]
+    fn committed_import_run_renders_ledger_accounts_section() {
+        let payload = json!({
+            "dry_run": false,
+            "import_id": "imp_1",
+            "next_step": {
+                "label": "Connect and query your data",
+                "command": "driggsby schema"
+            },
+            "other_actions": [],
+            "summary": {
+                "rows_read": 2,
+                "rows_valid": 2,
+                "rows_invalid": 0,
+                "inserted": 2
+            },
+            "duplicate_summary": {
+                "total": 0,
+                "batch": 0,
+                "existing_ledger": 0
+            },
+            "duplicates_preview": {
+                "returned": 0,
+                "truncated": false,
+                "rows": []
+            },
+            "ledger_accounts": {
+                "summary": {
+                    "account_count": 1,
+                    "transaction_count": 2,
+                    "earliest_posted_at": "2026-01-01",
+                    "latest_posted_at": "2026-01-05",
+                    "typed_account_count": 1,
+                    "untyped_account_count": 0,
+                    "net_amount": -20.0
+                },
+                "rows": [
+                    {
+                        "account_key": "acct_1",
+                        "account_type": "checking",
+                        "currency": "USD",
+                        "txn_count": 2,
+                        "first_posted_at": "2026-01-01",
+                        "last_posted_at": "2026-01-05",
+                        "net_amount": -20.0
+                    }
+                ]
+            }
+        });
+
+        let rendered = render_import_run(&payload);
+        assert!(rendered.is_ok());
+        if let Ok(text) = rendered {
+            assert!(text.contains("Your ledger now:"));
+            assert!(text.contains("Account count:"));
+            assert!(text.contains("acct_1"));
+            assert!(text.contains("checking"));
+        }
+    }
+
+    #[test]
+    fn dry_run_import_run_does_not_render_ledger_accounts_section() {
+        let payload = json!({
+            "dry_run": true,
+            "summary": {
+                "rows_read": 1,
+                "rows_valid": 1,
+                "rows_invalid": 0,
+                "inserted": 0
+            },
+            "duplicate_summary": {
+                "total": 0,
+                "batch": 0,
+                "existing_ledger": 0
+            },
+            "duplicates_preview": {
+                "returned": 0,
+                "truncated": false,
+                "rows": []
+            },
+            "next_step": {
+                "label": "Commit this import",
+                "command": "driggsby import create <path>"
+            },
+            "other_actions": [],
+            "ledger_accounts": {
+                "summary": {"account_count": 99},
+                "rows": []
+            }
+        });
+
+        let rendered = render_import_run(&payload);
+        assert!(rendered.is_ok());
+        if let Ok(text) = rendered {
+            assert!(!text.contains("Your ledger now:"));
+        }
+    }
+
+    #[test]
     fn import_list_empty_guides_user() {
         let payload = json!({ "rows": [] });
         let rendered = render_import_list(&payload);
@@ -1079,6 +1273,39 @@ mod tests {
     }
 
     #[test]
+    fn import_list_renders_account_coverage_section() {
+        let payload = json!({
+            "rows": [
+                {
+                    "import_id": "imp_1",
+                    "status": "committed",
+                    "created_at": "1735689600",
+                    "rows_read": 3,
+                    "inserted": 2,
+                    "deduped": 1,
+                    "accounts": [
+                        {
+                            "account_key": "acct_1",
+                            "account_type": "savings",
+                            "rows_read": 3,
+                            "inserted": 2,
+                            "deduped": 1
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let rendered = render_import_list(&payload);
+        assert!(rendered.is_ok());
+        if let Ok(text) = rendered {
+            assert!(text.contains("Account coverage:"));
+            assert!(text.contains("acct_1"));
+            assert!(text.contains("savings"));
+        }
+    }
+
+    #[test]
     fn import_list_orders_by_import_id_when_created_at_ties() {
         let payload = json!({
             "rows": [
@@ -1164,6 +1391,45 @@ mod tests {
             assert!(text.contains("Duplicates Preview (showing all 1 duplicate rows):"));
             assert!(text.contains("Duplicate within this import"));
             assert!(text.contains("Row #2"));
+        }
+    }
+
+    #[test]
+    fn dry_run_inventory_renders_account_type_property() {
+        let payload = json!({
+            "dry_run": true,
+            "summary": {
+                "rows_read": 1,
+                "rows_valid": 1,
+                "rows_invalid": 0,
+                "inserted": 0
+            },
+            "duplicate_summary": {
+                "total": 0,
+                "batch": 0,
+                "existing_ledger": 0
+            },
+            "duplicates_preview": {
+                "returned": 0,
+                "truncated": false,
+                "rows": []
+            },
+            "key_inventory": {
+                "account_key": {"unique_count": 1, "null_count": 0, "total_rows": 1, "existing_values": ["acct_1"]},
+                "currency": {"unique_count": 1, "null_count": 0, "total_rows": 1, "existing_values": ["USD"]},
+                "merchant": {"unique_count": 0, "null_count": 1, "total_rows": 1, "existing_values": []},
+                "category": {"unique_count": 0, "null_count": 1, "total_rows": 1, "existing_values": []},
+                "account_type": {"unique_count": 1, "null_count": 0, "total_rows": 1, "existing_values": ["checking"]}
+            },
+            "next_step": {"label": "Commit", "command": "driggsby import create <path>"},
+            "other_actions": []
+        });
+
+        let rendered = render_import_run(&payload);
+        assert!(rendered.is_ok());
+        if let Ok(text) = rendered {
+            assert!(text.contains("account_type:"));
+            assert!(text.contains("checking"));
         }
     }
 

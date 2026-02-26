@@ -65,6 +65,8 @@ pub struct ImportData {
     pub sign_profiles: Option<Vec<ImportSignProfile>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drift_warnings: Option<Vec<ImportDriftWarning>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ledger_accounts: Option<AccountsData>,
     pub query_context: QueryContext,
 }
 
@@ -175,6 +177,7 @@ pub struct ImportPropertyInventory {
 #[derive(Debug, Clone, Serialize)]
 pub struct ImportKeyInventory {
     pub account_key: ImportPropertyInventory,
+    pub account_type: ImportPropertyInventory,
     pub currency: ImportPropertyInventory,
     pub merchant: ImportPropertyInventory,
     pub category: ImportPropertyInventory,
@@ -225,11 +228,55 @@ pub struct ImportListItem {
     pub source_kind: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_ref: Option<String>,
+    pub accounts: Vec<ImportListAccountStat>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ImportListData {
     pub rows: Vec<ImportListItem>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportListAccountStat {
+    pub account_key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_type: Option<String>,
+    pub rows_read: i64,
+    pub inserted: i64,
+    pub deduped: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AccountsSummary {
+    pub account_count: i64,
+    pub transaction_count: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub earliest_posted_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latest_posted_at: Option<String>,
+    pub typed_account_count: i64,
+    pub untyped_account_count: i64,
+    pub net_amount: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AccountRow {
+    pub account_key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_type: Option<String>,
+    pub currency: String,
+    pub txn_count: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_posted_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_posted_at: Option<String>,
+    pub net_amount: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AccountsData {
+    pub summary: AccountsSummary,
+    pub rows: Vec<AccountRow>,
 }
 
 #[derive(Debug, Clone, Serialize)]

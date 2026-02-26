@@ -1,3 +1,5 @@
+mod accounts_shared;
+mod accounts_text;
 mod demo_text;
 mod error_text;
 mod format;
@@ -33,6 +35,7 @@ pub fn print_failure(error: &ClientError, mode: OutputMode) -> io::Result<()> {
 
 fn render_text_success(success: &SuccessEnvelope) -> io::Result<String> {
     match success.command.as_str() {
+        "accounts" => accounts_text::render_accounts(&success.data),
         "schema" => schema_text::render_schema_summary(&success.data),
         "schema.view" => schema_text::render_schema_view(&success.data),
         "import" => import_text::render_import_run(&success.data),

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -27,6 +28,13 @@ pub(crate) struct PersistInput<'a> {
     pub(crate) source_ref: Option<&'a str>,
 }
 
+#[derive(Debug, Clone, Default)]
+struct AccountImportStatCounter {
+    rows_read: i64,
+    inserted: i64,
+    deduped: i64,
+}
+
 pub(crate) fn persist_import(
     connection: &mut Connection,
     db_path: &Path,
@@ -39,12 +47,37 @@ pub(crate) fn persist_import(
         .map_err(|error| map_sqlite_error(db_path, &error))?;
 
     let mut inserted = 0_i64;
+    let mut account_stats: HashMap<String, AccountImportStatCounter> = HashMap::new();
     for batch_row in input.candidate_rows {
         insert_canonical_row(&transaction, db_path, input.import_id, &batch_row.row)?;
+        upsert_account_metadata(
+            &transaction,
+            db_path,
+            &batch_row.row.account_key,
+            batch_row.row.account_type.as_deref(),
+            &timestamp,
+        )?;
+        let stat = account_stats
+            .entry(batch_row.row.account_key.clone())
+            .or_default();
+        stat.rows_read += 1;
+        stat.inserted += 1;
         inserted += 1;
     }
 
     for duplicate_row in input.duplicate_rows {
+        upsert_account_metadata(
+            &transaction,
+            db_path,
+            &duplicate_row.row.account_key,
+            duplicate_row.row.account_type.as_deref(),
+            &timestamp,
+        )?;
+        let stat = account_stats
+            .entry(duplicate_row.row.account_key.clone())
+            .or_default();
+        stat.rows_read += 1;
+        stat.deduped += 1;
         insert_dedupe_candidate(
             &transaction,
             db_path,
@@ -86,6 +119,8 @@ pub(crate) fn persist_import(
             ],
         )
         .map_err(|error| map_sqlite_error(db_path, &error))?;
+
+    insert_import_account_stats(&transaction, db_path, input.import_id, &account_stats)?;
 
     transaction
         .commit()
@@ -196,6 +231,65 @@ fn insert_dedupe_candidate(
             ],
         )
         .map_err(|error| map_sqlite_error(db_path, &error))?;
+    Ok(())
+}
+
+fn upsert_account_metadata(
+    transaction: &rusqlite::Transaction<'_>,
+    db_path: &Path,
+    account_key: &str,
+    account_type: Option<&str>,
+    timestamp: &str,
+) -> ClientResult<()> {
+    transaction
+        .execute(
+            "INSERT INTO internal_accounts (account_key, account_type, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?3)
+             ON CONFLICT(account_key) DO UPDATE SET
+               account_type = CASE
+                   WHEN excluded.account_type IS NULL OR TRIM(excluded.account_type) = ''
+                       THEN internal_accounts.account_type
+                   WHEN internal_accounts.account_type IS NULL OR TRIM(internal_accounts.account_type) = ''
+                       THEN excluded.account_type
+                   ELSE internal_accounts.account_type
+               END,
+               updated_at = excluded.updated_at",
+            params![account_key, account_type, timestamp],
+        )
+        .map_err(|error| map_sqlite_error(db_path, &error))?;
+    Ok(())
+}
+
+fn insert_import_account_stats(
+    transaction: &rusqlite::Transaction<'_>,
+    db_path: &Path,
+    import_id: &str,
+    account_stats: &HashMap<String, AccountImportStatCounter>,
+) -> ClientResult<()> {
+    for (account_key, stat) in account_stats {
+        transaction
+            .execute(
+                "INSERT INTO internal_import_account_stats (
+                    import_id,
+                    account_key,
+                    rows_read,
+                    inserted,
+                    deduped
+                 ) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(import_id, account_key) DO UPDATE SET
+                    rows_read = excluded.rows_read,
+                    inserted = excluded.inserted,
+                    deduped = excluded.deduped",
+                params![
+                    import_id,
+                    account_key,
+                    stat.rows_read,
+                    stat.inserted,
+                    stat.deduped
+                ],
+            )
+            .map_err(|error| map_sqlite_error(db_path, &error))?;
+    }
     Ok(())
 }
 

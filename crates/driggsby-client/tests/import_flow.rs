@@ -223,7 +223,7 @@ fn dry_run_does_not_write_import_or_transactions() {
                 assert!(value["data"]["import_id"].is_null());
                 assert_eq!(
                     value["data"]["next_step"]["command"],
-                    Value::String("driggsby import create <path>".to_string())
+                    Value::String(format!("driggsby import create {}", source_path.display()))
                 );
                 let commands = action_commands(&value);
                 assert!(commands.is_empty());
@@ -260,7 +260,9 @@ fn dry_run_with_stdin_uses_stdin_commit_next_step() {
                 );
                 assert_eq!(
                     value["data"]["next_step"]["command"],
-                    Value::String("driggsby import create".to_string())
+                    Value::String(
+                        "cat <path-to-input.json> | driggsby import create -".to_string()
+                    )
                 );
                 assert!(action_commands(&value).is_empty());
             }
@@ -269,7 +271,7 @@ fn dry_run_with_stdin_uses_stdin_commit_next_step() {
 }
 
 #[test]
-fn file_and_stdin_prefers_file_and_emits_warning_metadata() {
+fn file_and_stdin_together_returns_invalid_argument_error() {
     let temp = temp_home();
     assert!(temp.is_ok());
     if let Ok((_temp, home)) = temp {
@@ -289,26 +291,14 @@ fn file_and_stdin_prefers_file_and_emits_warning_metadata() {
 ]"#;
 
         let result = run_import(&home, Some(&source_path), true, Some(stdin));
-        assert!(result.is_ok());
-        if let Ok(success) = result {
-            let payload = serde_json::to_value(success);
-            assert!(payload.is_ok());
-            if let Ok(value) = payload {
-                assert_eq!(
-                    value["data"]["source_used"],
-                    Value::String("file".to_string())
-                );
-                assert_eq!(
-                    value["data"]["source_ignored"],
-                    Value::String("stdin".to_string())
-                );
-                assert_eq!(value["data"]["source_conflict"], Value::Bool(true));
-                assert_eq!(
-                    value["data"]["warnings"][0]["code"],
-                    Value::String("stdin_ignored_file_provided".to_string())
-                );
-                assert_eq!(value["data"]["summary"]["rows_read"], Value::from(1));
-            }
+        assert!(result.is_err());
+        if let Err(error) = result {
+            assert_eq!(error.code, "invalid_argument");
+            assert!(
+                error
+                    .message
+                    .contains("Both stdin and file input were provided")
+            );
         }
     }
 }
@@ -1386,6 +1376,60 @@ fn undo_already_reverted_returns_error() {
 }
 
 #[test]
+fn undo_clears_account_type_when_account_has_no_remaining_transactions() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let typed_path = home.join("typed.json");
+        let reimport_path = home.join("reimport.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+
+        write_file(
+            &typed_path,
+            r#"[
+  {"statement_id":"undo_type_2026-01-31","account_key":"undo_type_account","account_type":"checking","posted_at":"2026-01-10","amount":-11.00,"currency":"USD","description":"UNDO-TYPE-SEED"}
+]"#,
+        );
+        write_file(
+            &reimport_path,
+            r#"[
+  {"statement_id":"undo_type_2026-02-28","account_key":"undo_type_account","account_type":"loan","posted_at":"2026-02-10","amount":-12.00,"currency":"USD","description":"UNDO-TYPE-REIMPORT"}
+]"#,
+        );
+
+        let first = run_import(&home, Some(&typed_path), false, None);
+        assert!(first.is_ok());
+
+        let mut import_id = None;
+        if let Ok(success) = first {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                import_id = extract_import_id(&value);
+            }
+        }
+
+        assert!(import_id.is_some());
+        if let Some(id) = import_id.as_deref() {
+            let undo_result = run_import_undo(&home, id);
+            assert!(undo_result.is_ok());
+        }
+
+        let second = run_import(&home, Some(&reimport_path), false, None);
+        assert!(second.is_ok());
+        if let Ok(success) = second {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                assert_eq!(value["data"]["summary"]["inserted"], Value::from(1));
+                assert_eq!(value["data"]["duplicate_summary"]["total"], Value::from(0));
+            }
+        }
+    }
+}
+
+#[test]
 fn undo_promotes_next_candidate() {
     let temp = temp_home();
     assert!(temp.is_ok());
@@ -1841,6 +1885,260 @@ fn duplicates_fallback_resolves_null_statement_id_using_dedupe_scope() {
                         Value::String("txn_missing".to_string())
                     );
                 }
+            }
+        }
+    }
+}
+
+#[test]
+fn import_create_commit_includes_ledger_accounts_summary_block() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("ledger-accounts-summary.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &source_path,
+            r#"[
+  {"statement_id":"acct_summary_1_2026-12-31","account_key":"acct_summary_1","account_type":"checking","posted_at":"2026-12-10","amount":-12.50,"currency":"USD","description":"SUMMARY-ROW-1"},
+  {"statement_id":"acct_summary_1_2026-12-31","account_key":"acct_summary_1","account_type":"checking","posted_at":"2026-12-11","amount":50.00,"currency":"USD","description":"SUMMARY-ROW-2"}
+]"#,
+        );
+
+        let result = run_import(&home, Some(&source_path), false, None);
+        assert!(result.is_ok());
+        if let Ok(success) = result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                assert!(value["data"]["ledger_accounts"]["summary"].is_object());
+                assert!(value["data"]["ledger_accounts"]["rows"].is_array());
+                assert!(value["data"]["ledger_accounts"]["summary"]["account_count"].is_i64());
+                assert!(value["data"]["ledger_accounts"]["summary"]["net_amount"].is_number());
+            }
+        }
+    }
+}
+
+#[test]
+fn import_list_includes_account_stats_and_stats_persist_after_undo() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("import-list-account-stats.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &source_path,
+            r#"[
+  {"statement_id":"acct_stats_1_2026-12-31","account_key":"acct_stats_1","account_type":"savings","posted_at":"2026-12-10","amount":-3.50,"currency":"USD","description":"STATS-A"},
+  {"statement_id":"acct_stats_2_2026-12-31","account_key":"acct_stats_2","account_type":"credit","posted_at":"2026-12-11","amount":-7.00,"currency":"USD","description":"STATS-B"},
+  {"statement_id":"acct_stats_2_2026-12-31","account_key":"acct_stats_2","account_type":"credit","posted_at":"2026-12-11","amount":-7.00,"currency":"USD","description":"STATS-B"}
+]"#,
+        );
+
+        let imported = run_import(&home, Some(&source_path), false, None);
+        assert!(imported.is_ok());
+
+        let mut import_id = None;
+        if let Ok(success) = imported {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                import_id = extract_import_id(&value);
+            }
+        }
+        assert!(import_id.is_some());
+
+        let listed = run_import_list(&home);
+        assert!(listed.is_ok());
+        if let Ok(success) = listed {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                assert!(value["data"]["rows"][0]["accounts"].is_array());
+                assert!(value["data"]["rows"][0]["accounts"][0]["account_key"].is_string());
+                assert!(value["data"]["rows"][0]["accounts"][0]["account_type"].is_string());
+                assert!(value["data"]["rows"][0]["accounts"][0]["rows_read"].is_i64());
+                assert!(value["data"]["rows"][0]["accounts"][0]["inserted"].is_i64());
+                assert!(value["data"]["rows"][0]["accounts"][0]["deduped"].is_i64());
+            }
+        }
+
+        if let Some(id) = import_id {
+            let undone = run_import_undo(&home, &id);
+            assert!(undone.is_ok());
+        }
+
+        let listed_after_undo = run_import_list(&home);
+        assert!(listed_after_undo.is_ok());
+        if let Ok(success) = listed_after_undo {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                assert_eq!(
+                    value["data"]["rows"][0]["status"],
+                    Value::String("reverted".into())
+                );
+                assert!(value["data"]["rows"][0]["accounts"].is_array());
+                assert!(
+                    !value["data"]["rows"][0]["accounts"]
+                        .as_array()
+                        .unwrap_or(&Vec::new())
+                        .is_empty()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn account_type_is_persisted_and_aliases_are_canonicalized() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("account-type-canonicalization.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &source_path,
+            r#"[
+  {"statement_id":"acct_type_1_2026-12-31","account_key":"acct_type_1","account_type":"creditcard","posted_at":"2026-12-01","amount":-15.00,"currency":"USD","description":"TYPE-ALIAS"},
+  {"statement_id":"acct_type_2_2026-12-31","account_key":"acct_type_2","account_type":"retirement_401k","posted_at":"2026-12-02","amount":-25.00,"currency":"USD","description":"TYPE-ALIAS-RETIREMENT"}
+]"#,
+        );
+
+        let first = run_import(&home, Some(&source_path), false, None);
+        assert!(first.is_ok());
+
+        let db_path = home.join("ledger.db");
+        let canonical = query_optional_string(
+            &db_path,
+            "SELECT account_type FROM internal_accounts WHERE account_key = 'acct_type_1' LIMIT 1",
+        );
+        assert_eq!(canonical, Some("credit_card".to_string()));
+        let retirement_canonical = query_optional_string(
+            &db_path,
+            "SELECT account_type FROM internal_accounts WHERE account_key = 'acct_type_2' LIMIT 1",
+        );
+        assert_eq!(retirement_canonical, Some("retirement".to_string()));
+
+        let second_path = home.join("account-type-omitted.json");
+        write_file(
+            &second_path,
+            r#"[
+  {"statement_id":"acct_type_1_2027-01-31","account_key":"acct_type_1","posted_at":"2027-01-03","amount":-9.00,"currency":"USD","description":"TYPE-OMITTED"}
+]"#,
+        );
+        let second = run_import(&home, Some(&second_path), false, None);
+        assert!(second.is_ok());
+    }
+}
+
+#[test]
+fn account_type_conflict_with_existing_ledger_is_rejected() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let first_path = home.join("account-type-first.json");
+        let second_path = home.join("account-type-conflict.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+
+        write_file(
+            &first_path,
+            r#"[
+  {"statement_id":"acct_type_conflict_1_2026-12-31","account_key":"acct_type_conflict_1","account_type":"checking","posted_at":"2026-12-01","amount":-11.00,"currency":"USD","description":"TYPE-FIRST"}
+]"#,
+        );
+        write_file(
+            &second_path,
+            r#"[
+  {"statement_id":"acct_type_conflict_1_2027-01-31","account_key":"acct_type_conflict_1","account_type":"savings","posted_at":"2027-01-01","amount":-12.00,"currency":"USD","description":"TYPE-CONFLICT"}
+]"#,
+        );
+
+        let first = run_import(&home, Some(&first_path), false, None);
+        assert!(first.is_ok());
+
+        let second = run_import(&home, Some(&second_path), false, None);
+        assert!(second.is_err());
+        if let Err(error) = second {
+            assert_eq!(error.code, "import_validation_failed");
+            let envelope = failure_from_error(&error);
+            let as_json = serde_json::to_value(envelope);
+            assert!(as_json.is_ok());
+            if let Ok(value) = as_json {
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["code"],
+                    Value::String("account_type_conflicts_with_ledger".to_string())
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn account_type_conflict_inside_single_import_is_rejected() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("account-type-in-file-conflict.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &source_path,
+            r#"[
+  {"statement_id":"acct_type_in_file_1_2026-12-31","account_key":"acct_type_in_file_1","account_type":"checking","posted_at":"2026-12-01","amount":-4.00,"currency":"USD","description":"TYPE-IN-FILE-A"},
+  {"statement_id":"acct_type_in_file_1_2026-12-31","account_key":"acct_type_in_file_1","account_type":"loan","posted_at":"2026-12-02","amount":-6.00,"currency":"USD","description":"TYPE-IN-FILE-B"}
+]"#,
+        );
+
+        let result = run_import(&home, Some(&source_path), true, None);
+        assert!(result.is_err());
+        if let Err(error) = result {
+            assert_eq!(error.code, "import_validation_failed");
+            let envelope = failure_from_error(&error);
+            let as_json = serde_json::to_value(envelope);
+            assert!(as_json.is_ok());
+            if let Ok(value) = as_json {
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["code"],
+                    Value::String("account_type_conflict_in_import".to_string())
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn unknown_account_type_is_rejected_with_deterministic_code() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("account-type-invalid.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &source_path,
+            r#"[
+  {"statement_id":"acct_type_invalid_1_2026-12-31","account_key":"acct_type_invalid_1","account_type":"side_hustle","posted_at":"2026-12-01","amount":-8.00,"currency":"USD","description":"TYPE-INVALID"}
+]"#,
+        );
+
+        let result = run_import(&home, Some(&source_path), true, None);
+        assert!(result.is_err());
+        if let Err(error) = result {
+            assert_eq!(error.code, "import_validation_failed");
+            let envelope = failure_from_error(&error);
+            let as_json = serde_json::to_value(envelope);
+            assert!(as_json.is_ok());
+            if let Ok(value) = as_json {
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["code"],
+                    Value::String("invalid_account_type".to_string())
+                );
             }
         }
     }

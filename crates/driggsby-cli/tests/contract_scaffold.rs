@@ -30,6 +30,7 @@ Need to do custom analysis? Run SQL against our views:
   2. Query `v1_*` views with sqlite3 or any SQL client
 
 Other commands:
+  driggsby accounts                             Show account-level ledger orientation
   driggsby import keys uniq                     List canonical import identifiers
   driggsby import duplicates <id>               Inspect duplicate rows from one import
   driggsby import list                          List past imports
@@ -47,6 +48,7 @@ Usage:
   driggsby <command>
 
 Start here:
+  driggsby accounts
   driggsby import create --help
   driggsby schema
 ";
@@ -247,6 +249,37 @@ fn schema_view_output_is_plaintext() {
 }
 
 #[test]
+fn accounts_plaintext_and_json_contracts_are_supported() {
+    let home = unique_test_home();
+    let source_path = write_source_file(
+        &home,
+        "accounts.json",
+        r#"[
+  {"statement_id":"acct_cli_accounts_1_2026-01-31","account_key":"acct_cli_accounts_1","account_type":"checking","posted_at":"2026-01-01","amount":-5.00,"currency":"USD","description":"COFFEE"},
+  {"statement_id":"acct_cli_accounts_1_2026-01-31","account_key":"acct_cli_accounts_1","account_type":"checking","posted_at":"2026-01-02","amount":10.00,"currency":"USD","description":"REFUND"}
+]"#,
+    );
+    let source_arg = source_path.display().to_string();
+    let (import_ok, _import_body) =
+        run_cli_in_home_with_input(&home, &["import", "create", &source_arg], None);
+    assert!(import_ok);
+
+    let (text_ok, text_body) = run_cli_in_home_with_input(&home, &["accounts"], None);
+    assert!(text_ok);
+    assert!(text_body.contains("Ledger account summary:"));
+    assert!(text_body.contains("Accounts:"));
+    assert!(text_body.contains("acct_cli_accounts_1"));
+
+    let (json_ok, json_body) = run_cli_in_home_with_input(&home, &["accounts", "--json"], None);
+    assert!(json_ok);
+    let payload = parse_json(&json_body);
+    assert!(payload["summary"].is_object());
+    assert!(payload["rows"].is_array());
+    assert!(payload.get("ok").is_none());
+    assert!(payload.get("version").is_none());
+}
+
+#[test]
 fn unknown_schema_view_uses_plaintext_error_contract() {
     let (ok, body, _) = run_cli(&["schema", "view", "v1_missing"]);
     assert!(!ok);
@@ -274,7 +307,7 @@ fn import_dry_run_default_is_plaintext_summary() {
     assert!(body.contains("Drift warnings:"));
     assert!(body.contains("No rows were written because this was a dry run."));
     assert!(body.contains("Next step:"));
-    assert!(body.contains("driggsby import create <path>"));
+    assert!(body.contains(&format!("driggsby import create {source_arg}")));
     assert!(body.contains("Other actions:"));
     assert!(!body.contains("driggsby import undo"));
     assert!(!body.contains("\"ok\""));
@@ -299,6 +332,7 @@ fn import_plaintext_success_shows_import_id_and_safe_actions() {
     assert!(body.contains("Summary:"));
     assert!(body.contains("Duplicate Summary:"));
     assert!(body.contains("Duplicates Preview"));
+    assert!(body.contains("Your ledger now:"));
     assert!(body.contains("Next step:"));
     assert!(body.contains("driggsby schema"));
     assert!(body.contains("Other actions:"));
@@ -345,6 +379,8 @@ fn import_json_success_uses_structured_envelope_without_command_field() {
         assert_eq!(actions[1]["risk"], Value::String("destructive".to_string()));
     }
     assert!(payload["data"]["summary"].is_object());
+    assert!(payload["data"]["ledger_accounts"]["summary"].is_object());
+    assert!(payload["data"]["ledger_accounts"]["rows"].is_array());
     assert!(payload["data"]["issues"].is_array());
     assert!(payload["data"]["query_context"].is_object());
     assert!(payload["data"]["message"].is_string());
@@ -380,6 +416,7 @@ fn import_list_plaintext_and_json_contracts_are_both_supported() {
     assert!(list_body.contains("Imports:"));
     assert!(list_body.contains("Created (local)"));
     assert!(list_body.contains("Import ID"));
+    assert!(list_body.contains("Account coverage:"));
     assert!(!list_body.contains("\"ok\""));
 
     let (json_ok, json_body) =
@@ -391,6 +428,15 @@ fn import_list_plaintext_and_json_contracts_are_both_supported() {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["status"], Value::String("reverted".to_string()));
         assert!(rows[0]["import_id"].is_string());
+        assert!(rows[0]["accounts"].is_array());
+        assert!(rows[0]["accounts"][0]["account_key"].is_string());
+        assert!(
+            rows[0]["accounts"][0]["account_type"].is_string()
+                || rows[0]["accounts"][0]["account_type"].is_null()
+        );
+        assert!(rows[0]["accounts"][0]["rows_read"].is_i64());
+        assert!(rows[0]["accounts"][0]["inserted"].is_i64());
+        assert!(rows[0]["accounts"][0]["deduped"].is_i64());
         assert!(rows[0]["timestamps"]["created"]["epoch_s"].is_i64());
         assert!(rows[0]["timestamps"]["created"]["utc"].is_string());
         assert!(rows[0]["timestamps"]["created"]["local"].is_string());
@@ -513,6 +559,7 @@ fn import_create_json_missing_statement_id_is_accepted() {
     assert!(ok);
     let payload = parse_json(&body);
     assert_eq!(payload["ok"], Value::Bool(true));
+    assert_eq!(payload["version"], Value::String("v1".to_string()));
     assert_eq!(payload["data"]["summary"]["rows_read"], Value::from(1));
     assert_eq!(payload["data"]["summary"]["rows_valid"], Value::from(1));
     assert_eq!(payload["data"]["summary"]["rows_invalid"], Value::from(0));
@@ -673,10 +720,10 @@ fn import_duplicates_plaintext_and_json_contracts_are_supported() {
             run_cli_in_home_with_input(&home, &["import", "duplicates", id, "--json"], None);
         assert!(json_ok);
         let payload = parse_json(&json_body);
-        assert_eq!(payload["ok"], Value::Bool(true));
-        assert_eq!(payload["version"], Value::String("v1".to_string()));
-        assert_eq!(payload["data"]["import_id"], Value::String(id.to_string()));
-        assert!(payload["data"]["rows"].is_array());
+        assert_eq!(payload["import_id"], Value::String(id.to_string()));
+        assert!(payload["rows"].is_array());
+        assert!(payload.get("ok").is_none());
+        assert!(payload.get("version").is_none());
     }
 }
 
@@ -697,6 +744,7 @@ fn import_dry_run_with_json_returns_json_output() {
     assert!(ok);
     let payload = parse_json(&body);
     assert_eq!(payload["ok"], Value::Bool(true));
+    assert_eq!(payload["version"], Value::String("v1".to_string()));
     assert_eq!(payload["data"]["dry_run"], Value::Bool(true));
     assert!(payload["data"]["key_inventory"].is_object());
     assert!(payload["data"]["sign_profiles"].is_array());
@@ -726,6 +774,7 @@ fn import_keys_uniq_plaintext_and_json_contracts_are_supported() {
     assert!(text_body.contains("currency"));
     assert!(text_body.contains("merchant"));
     assert!(text_body.contains("category"));
+    assert!(text_body.contains("account_type"));
 
     let (json_ok, json_body) = run_cli_in_home_with_input(
         &home,
@@ -734,14 +783,25 @@ fn import_keys_uniq_plaintext_and_json_contracts_are_supported() {
     );
     assert!(json_ok);
     let payload = parse_json(&json_body);
-    assert_eq!(payload["ok"], Value::Bool(true));
-    assert_eq!(
-        payload["data"]["property"],
-        Value::String("merchant".to_string())
+    assert_eq!(payload["property"], Value::String("merchant".to_string()));
+    assert!(payload["inventories"].is_array());
+    assert!(payload["inventories"][0]["existing_values"].is_array());
+    assert!(payload["inventories"][0]["value_counts"].is_array());
+    assert!(payload.get("ok").is_none());
+    assert!(payload.get("version").is_none());
+
+    let (account_type_ok, account_type_body) = run_cli_in_home_with_input(
+        &home,
+        &["import", "keys", "uniq", "account_type", "--json"],
+        None,
     );
-    assert!(payload["data"]["inventories"].is_array());
-    assert!(payload["data"]["inventories"][0]["existing_values"].is_array());
-    assert!(payload["data"]["inventories"][0]["value_counts"].is_array());
+    assert!(account_type_ok);
+    let account_type_payload = parse_json(&account_type_body);
+    assert_eq!(
+        account_type_payload["property"],
+        Value::String("account_type".to_string())
+    );
+    assert!(account_type_payload["inventories"].is_array());
 }
 
 #[test]
@@ -830,6 +890,7 @@ fn import_create_dash_reads_stdin_and_empty_stdin_is_rejected() {
     assert!(ok);
     let payload = parse_json(&body);
     assert_eq!(payload["ok"], Value::Bool(true));
+    assert_eq!(payload["version"], Value::String("v1".to_string()));
     assert_eq!(
         payload["data"]["source_used"],
         Value::String("stdin".to_string())
@@ -852,7 +913,7 @@ fn import_create_dash_reads_stdin_and_empty_stdin_is_rejected() {
 }
 
 #[test]
-fn import_plaintext_shows_source_conflict_warning_when_stdin_is_ignored() {
+fn import_plaintext_rejects_conflicting_file_and_stdin_sources() {
     let home = unique_test_home();
     let source_path = write_source_file(
         &home,
@@ -871,10 +932,9 @@ fn import_plaintext_shows_source_conflict_warning_when_stdin_is_ignored() {
         &["import", "create", "--dry-run", &source_arg],
         Some(stdin_body),
     );
-    assert!(ok);
-    assert!(body.contains("Warnings:"));
-    assert!(body.contains("stdin"));
-    assert!(body.contains("ignored"));
+    assert!(!ok);
+    assert_text_error_contract(&body, "invalid_argument");
+    assert!(body.contains("Both stdin and file input were provided"));
 }
 
 #[test]

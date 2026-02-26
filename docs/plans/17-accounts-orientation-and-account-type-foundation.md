@@ -58,40 +58,40 @@ Validation behavior:
 
 ## Goals and Acceptance Criteria
 
-- [ ] Agents can run `driggsby accounts` and immediately see ledger-wide orientation + per-account stats.
+- [x] Agents can run `driggsby accounts` and immediately see ledger-wide orientation + per-account stats.
   - Acceptance: plaintext includes one summary line and deterministic per-account rows.
-  - Acceptance: `--json` includes `data.summary` and `data.rows` with stable field names.
+  - Acceptance: `--json` includes `summary` and `rows` with stable field names.
 
-- [ ] `import create` success includes post-import ledger/account summary in both plaintext and JSON.
+- [x] `import create` success includes post-import ledger/account summary in both plaintext and JSON.
   - Acceptance: commit success payload includes a structured ledger summary block.
   - Acceptance: dry-run behavior remains unchanged (no misleading "ledger now" output).
 
-- [ ] `import list` surfaces touched accounts and per-account outcomes.
+- [x] `import list` surfaces touched accounts and per-account outcomes.
   - Acceptance: each import row in `import list --json` includes `accounts[]` with `account_key`, `account_type`, `rows_read`, `inserted`, `deduped`.
   - Acceptance: plaintext `import list` visibly surfaces account keys per import without requiring SQL.
 
-- [ ] `account_type` is supported as optional import input with consistency enforcement.
+- [x] `account_type` is supported as optional import input with consistency enforcement.
   - Acceptance: first typed import sets canonical type for account.
   - Acceptance: later conflicting type fails validation with row-level issue + guidance.
   - Acceptance: later omitted type succeeds.
 
-- [ ] Existing ledgers are migrated safely and backfilled for account metadata.
+- [x] Existing ledgers are migrated safely and backfilled for account metadata.
   - Acceptance: migration adds required schema objects and passes setup integrity checks.
   - Acceptance: existing distinct account keys are represented in `internal_accounts` with null `account_type` unless typed by future imports.
 
-- [ ] `import keys uniq` includes `account_type` inventory.
+- [x] `import keys uniq` includes `account_type` inventory.
   - Acceptance: property parser/help/output all support `account_type` deterministically.
 
 ## Scope
 
-- [ ] New command: `driggsby accounts` (`--json` supported)
-- [ ] Import create success contract/renderer additions for ledger/account summary
-- [ ] Import list contract/renderer additions for account coverage per import
-- [ ] Import schema + validation support for optional `account_type`
-- [ ] Account metadata storage + migration/backfill for existing ledgers
-- [ ] `import keys uniq` extension to include `account_type`
-- [ ] Help text and schema contract updates (`import create --help`, top-level help, parser guidance)
-- [ ] Full test coverage updates across client/CLI/unit/integration
+- [x] New command: `driggsby accounts` (`--json` supported)
+- [x] Import create success contract/renderer additions for ledger/account summary
+- [x] Import list contract/renderer additions for account coverage per import
+- [x] Import schema + validation support for optional `account_type`
+- [x] Account metadata storage + migration/backfill for existing ledgers
+- [x] `import keys uniq` extension to include `account_type`
+- [x] Help text and schema contract updates (`import create --help`, top-level help, parser guidance)
+- [x] Full test coverage updates across client/CLI/unit/integration
 
 ## Out of Scope
 
@@ -115,30 +115,26 @@ JSON shape (contract):
 
 ```json
 {
-  "ok": true,
-  "version": "v1",
-  "data": {
-    "summary": {
-      "account_count": 8,
-      "transaction_count": 644,
-      "earliest_posted_at": "2025-11-01",
-      "latest_posted_at": "2026-03-31",
-      "typed_account_count": 5,
-      "untyped_account_count": 3,
-      "net_amount": 10345.22
-    },
-    "rows": [
-      {
-        "account_key": "operating_checking_7314",
-        "account_type": "checking",
-        "currency": "USD",
-        "txn_count": 42,
-        "first_posted_at": "2026-01-01",
-        "last_posted_at": "2026-03-31",
-        "net_amount": 3359.60
-      }
-    ]
-  }
+  "summary": {
+    "account_count": 8,
+    "transaction_count": 644,
+    "earliest_posted_at": "2025-11-01",
+    "latest_posted_at": "2026-03-31",
+    "typed_account_count": 5,
+    "untyped_account_count": 3,
+    "net_amount": 10345.22
+  },
+  "rows": [
+    {
+      "account_key": "operating_checking_7314",
+      "account_type": "checking",
+      "currency": "USD",
+      "txn_count": 42,
+      "first_posted_at": "2026-01-01",
+      "last_posted_at": "2026-03-31",
+      "net_amount": 3359.60
+    }
+  ]
 }
 ```
 
@@ -249,140 +245,140 @@ Purpose:
 
 ### Workstream A - Contracts and shared types
 
-- [ ] Add account summary contracts in `crates/driggsby-client/src/contracts/types.rs`:
+- [x] Add account summary contracts in `crates/driggsby-client/src/contracts/types.rs`:
   - `AccountsSummary`
   - `AccountRow`
   - `AccountsData`
   - `ImportListAccountStat`
-- [ ] Add `ledger_accounts` field to `ImportData` (optional).
-- [ ] Add `accounts: Vec<ImportListAccountStat>` to `ImportListItem`.
-- [ ] Extend `ImportKeyInventory` for `account_type`.
+- [x] Add `ledger_accounts` field to `ImportData` (optional).
+- [x] Add `accounts: Vec<ImportListAccountStat>` to `ImportListItem`.
+- [x] Extend `ImportKeyInventory` for `account_type`.
 
 ### Workstream B - Client command surfaces
 
-- [ ] Create `crates/driggsby-client/src/commands/accounts.rs`.
-- [ ] Wire module export in `commands/mod.rs`.
-- [ ] Add dispatch path + CLI variant for `accounts` in `crates/driggsby-cli/src/cli.rs` and `dispatch.rs`.
-- [ ] Update top-level help copy in `main.rs` to include `driggsby accounts`.
+- [x] Create `crates/driggsby-client/src/commands/accounts.rs`.
+- [x] Wire module export in `commands/mod.rs`.
+- [x] Add dispatch path + CLI variant for `accounts` in `crates/driggsby-cli/src/cli.rs` and `dispatch.rs`.
+- [x] Update top-level help copy in `main.rs` to include `driggsby accounts`.
 
 ### Workstream C - Import create / list data assembly
 
-- [ ] During commit import flow, compute and persist per-import account stats in `internal_import_account_stats`.
-- [ ] After commit, compute ledger account summary and attach to `ImportExecutionResult`.
-- [ ] Update `commands::import::list_with_options` to load `accounts` stats per import row.
-- [ ] Join account stats to `internal_accounts` to include `account_type` in list outputs.
+- [x] During commit import flow, compute and persist per-import account stats in `internal_import_account_stats`.
+- [x] After commit, compute ledger account summary and attach to `ImportExecutionResult`.
+- [x] Update `commands::import::list_with_options` to load `accounts` stats per import row.
+- [x] Join account stats to `internal_accounts` to include `account_type` in list outputs.
 
 ### Workstream D - Account type parsing + validation + consistency
 
-- [ ] Add `account_type` to optional import schema fields (`commands/common.rs`).
-- [ ] Extend parser row struct in `import/parse.rs` (JSON + CSV).
-- [ ] Extend canonical row model and validation in `import/validate.rs`:
+- [x] Add `account_type` to optional import schema fields (`commands/common.rs`).
+- [x] Extend parser row struct in `import/parse.rs` (JSON + CSV).
+- [x] Extend canonical row model and validation in `import/validate.rs`:
   - normalization
   - canonical value validation
   - in-file consistency
-- [ ] Add ledger consistency check against `internal_accounts`.
-- [ ] Add deterministic issue codes:
+- [x] Add ledger consistency check against `internal_accounts`.
+- [x] Add deterministic issue codes:
   - `invalid_account_type`
   - `account_type_conflict_in_import`
   - `account_type_conflicts_with_ledger`
 
 ### Workstream E - Persistence + migration
 
-- [ ] Add migration SQL `0005_accounts_metadata_and_import_account_stats.sql`.
-- [ ] Update `migrations.rs` to register migration and update safe-repair coverage as needed.
-- [ ] Update setup integrity checks in `setup.rs`:
+- [x] Add migration SQL `0005_accounts_metadata_and_import_account_stats.sql`.
+- [x] Update `migrations.rs` to register migration and update safe-repair coverage as needed.
+- [x] Update setup integrity checks in `setup.rs`:
   - new required table(s)
   - new required columns
   - user_version expectation (4 -> 5)
-- [ ] Update bootstrap SQL for fresh installs to include new tables and updated views.
+- [x] Update bootstrap SQL for fresh installs to include new tables and updated views.
 
 ### Workstream F - Rendering and output-mode wiring
 
-- [ ] Add plaintext renderer for `accounts` (new file `output/accounts_text.rs`).
-- [ ] Wire `accounts` in `output/mod.rs` and `output/json.rs`.
-- [ ] Add output mode support in `output/mode.rs` for `accounts --json`.
-- [ ] Update `import_text.rs`:
+- [x] Add plaintext renderer for `accounts` (new file `output/accounts_text.rs`).
+- [x] Wire `accounts` in `output/mod.rs` and `output/json.rs`.
+- [x] Add output mode support in `output/mode.rs` for `accounts --json`.
+- [x] Update `import_text.rs`:
   - import create ledger summary section
   - import list account visibility section
-- [ ] Keep deterministic ordering and no markdown tables.
+- [x] Keep deterministic ordering and no markdown tables.
 
 ### Workstream G - Help and parser guidance
 
-- [ ] Update `IMPORT_CREATE_AFTER_HELP` with `account_type` docs and examples.
-- [ ] Update `import keys uniq` property parser/help to include `account_type`.
-- [ ] Update parse-error command hint resolver in `main.rs` for `accounts` command path.
+- [x] Update `IMPORT_CREATE_AFTER_HELP` with `account_type` docs and examples.
+- [x] Update `import keys uniq` property parser/help to include `account_type`.
+- [x] Update parse-error command hint resolver in `main.rs` for `accounts` command path.
 
 ## TDD Execution Plan
 
 ### Step 0 - Red tests first
 
-- [ ] Add failing tests for new `accounts` command parse/dispatch/output.
-- [ ] Add failing tests for `import list` account stats in plaintext and JSON.
-- [ ] Add failing tests for post-import ledger summary in `import create`.
-- [ ] Add failing tests for `account_type` parsing, validation, and conflict handling.
-- [ ] Add failing migration/setup tests for new tables/views/user_version.
-- [ ] Add failing `import keys uniq account_type` tests.
+- [x] Add failing tests for new `accounts` command parse/dispatch/output.
+- [x] Add failing tests for `import list` account stats in plaintext and JSON.
+- [x] Add failing tests for post-import ledger summary in `import create`.
+- [x] Add failing tests for `account_type` parsing, validation, and conflict handling.
+- [x] Add failing migration/setup tests for new tables/views/user_version.
+- [x] Add failing `import keys uniq account_type` tests.
 
 ### Step 1 - Minimal implementation
 
-- [ ] Implement contracts + command plumbing.
-- [ ] Implement migration and persistence updates.
-- [ ] Implement validation and account metadata write path.
-- [ ] Implement renderers/help updates.
+- [x] Implement contracts + command plumbing.
+- [x] Implement migration and persistence updates.
+- [x] Implement validation and account metadata write path.
+- [x] Implement renderers/help updates.
 
 ### Step 2 - Iterate to green
 
-- [ ] Run targeted tests and resolve only behavior gaps.
+- [x] Run targeted tests and resolve only behavior gaps.
 
 ### Step 3 - Full verification
 
-- [ ] `cargo test --all-features`
-- [ ] `just required-check`
+- [x] `cargo test --all-features`
+- [x] `just required-check`
 
 ### Step 4 - Agentic review stages
 
-- [ ] Stage 1 `agentic_ux` review (primary + adversarial)
-- [ ] Stage 2 `verification` review (primary + adversarial)
-- [ ] Fix `high_friction+` and `medium+` findings
+- [x] Stage 1 `agentic_ux` review (primary + adversarial)
+- [x] Stage 2 `verification` review (primary + adversarial)
+- [x] Fix `high_friction+` and `medium+` findings
 
 ### Step 5 - Final gate
 
-- [ ] `just rust-verify`
-- [ ] Closeout updates in this plan + executive summary section
-- [ ] Commit with descriptive message ending in `Authored by:` footer
+- [x] `just rust-verify`
+- [x] Closeout updates in this plan + executive summary section
+- [x] Commit with descriptive message ending in `Authored by:` footer
 
 ## Test Matrix
 
-- [ ] `T-01` `driggsby accounts` plaintext shows ledger summary and per-account rows.
-- [ ] `T-02` `driggsby accounts --json` returns `{ ok, version, data: { summary, rows } }`.
-- [ ] `T-03` empty-ledger `accounts` output provides clear first-step guidance.
-- [ ] `T-04` `import create` commit output includes `ledger_accounts` JSON block.
-- [ ] `T-05` `import create` plaintext includes `Your ledger now` section.
-- [ ] `T-06` dry-run `import create` does not include misleading ledger-now block.
-- [ ] `T-07` `import list --json` rows include additive `accounts[]` with counts.
-- [ ] `T-08` `import list` plaintext visibly surfaces account keys per import.
-- [ ] `T-09` import with first-time valid `account_type` persists canonical type.
-- [ ] `T-10` import omitting `account_type` for typed account succeeds.
-- [ ] `T-11` conflicting `account_type` vs canonical ledger value fails with deterministic issue code.
-- [ ] `T-12` conflicting `account_type` values in the same batch fail deterministically.
-- [ ] `T-13` unknown `account_type` alias/value fails with guidance.
-- [ ] `T-14` `import keys uniq account_type` works in plaintext and JSON.
-- [ ] `T-15` setup migration upgrades to user_version `5` and validates new required objects.
-- [ ] `T-16` backfilled existing ledger exposes account keys in `internal_accounts`.
-- [ ] `T-17` undo/reverted import still retains per-import account stats snapshot for new imports.
+- [x] `T-01` `driggsby accounts` plaintext shows ledger summary and per-account rows.
+- [x] `T-02` `driggsby accounts --json` returns `{ summary, rows }`.
+- [x] `T-03` empty-ledger `accounts` output provides clear first-step guidance.
+- [x] `T-04` `import create` commit output includes `ledger_accounts` JSON block.
+- [x] `T-05` `import create` plaintext includes `Your ledger now` section.
+- [x] `T-06` dry-run `import create` does not include misleading ledger-now block.
+- [x] `T-07` `import list --json` rows include additive `accounts[]` with counts.
+- [x] `T-08` `import list` plaintext visibly surfaces account keys per import.
+- [x] `T-09` import with first-time valid `account_type` persists canonical type.
+- [x] `T-10` import omitting `account_type` for typed account succeeds.
+- [x] `T-11` conflicting `account_type` vs canonical ledger value fails with deterministic issue code.
+- [x] `T-12` conflicting `account_type` values in the same batch fail deterministically.
+- [x] `T-13` unknown `account_type` alias/value fails with guidance.
+- [x] `T-14` `import keys uniq account_type` works in plaintext and JSON.
+- [x] `T-15` setup migration upgrades to user_version `5` and validates new required objects.
+- [x] `T-16` backfilled existing ledger exposes account keys in `internal_accounts`.
+- [x] `T-17` undo/reverted import still retains per-import account stats snapshot for new imports.
 
 ## Risks and Mitigations
 
-- [ ] Risk: ambiguous historic import account stats for old reverted imports.
+- [x] Risk: ambiguous historic import account stats for old reverted imports.
   - Mitigation: explicit best-effort backfill and documented limitation in output/help text.
 
-- [ ] Risk: account-type alias sprawl causes contract drift.
+- [x] Risk: account-type alias sprawl causes contract drift.
   - Mitigation: centralized normalization map + explicit canonical output values only.
 
-- [ ] Risk: output becomes too verbose in `import list` plaintext.
+- [x] Risk: output becomes too verbose in `import list` plaintext.
   - Mitigation: keep compact primary table and deterministic secondary account-details section.
 
-- [ ] Risk: migration misses setup integrity updates and causes false `ledger_corrupt`.
+- [x] Risk: migration misses setup integrity updates and causes false `ledger_corrupt`.
   - Mitigation: update `setup.rs` + setup tests in same TDD cycle before implementation is considered complete.
 
 ## Assumptions and Defaults
@@ -392,3 +388,30 @@ Purpose:
 - [x] Canonical account metadata authority is `internal_accounts`.
 - [x] `import list --json` remains a top-level array; account coverage is additive per-row data.
 - [x] New `accounts --json` uses object shape (`summary` + `rows`) for deterministic agent parsing.
+
+## Progress Update (In-Flight)
+
+- Completed foundations:
+  - Contracts/types for accounts summary rows, import list account stats, and `ledger_accounts`.
+  - Client account query command (`commands/accounts.rs`) and dispatch wiring.
+  - Account metadata persistence + migration path (`internal_accounts`, `internal_import_account_stats`) with setup integrity upgrades to user_version `5`.
+  - `account_type` parsing/normalization/validation with conflict checks (in-file and against ledger), including expanded alias support for common agent-generated variants (for example `retirement_401k`, `401k_retirement`, `credit-card`).
+  - `import keys uniq` property surface extended with `account_type`.
+  - CLI JSON policy refined per user feedback: edit commands retain envelope (`ok/version`), while read-only surfaces return command data directly.
+- Additional closeout fixes completed after review:
+  - `import create` now rejects conflicting dual-source input (file + stdin) instead of silently ignoring stdin.
+  - Dry-run next-step guidance now emits concrete file commit command when path is known, and explicit stdin replay template for stdin-based dry-runs.
+  - Undo now reconciles account metadata for touched keys and clears stale account types when no canonical transactions remain.
+  - Safe-repair/verification coverage now includes `internal_import_account_stats` indexes.
+  - Shared account summary/table renderer extracted to reduce duplication and drift between `accounts` and `import` text surfaces.
+- Remaining before full completion:
+  - Create commit with descriptive message ending in `Authored by:` footer.
+
+## Executive Summary
+
+- Implemented the full accounts-orientation and account-type foundation: new `accounts` command, richer import outputs, per-import account coverage in `import list`, and optional validated `account_type` input with alias normalization and conflict enforcement.
+- Added persistent account metadata/state with migration and setup integrity upgrades, including safe-repair coverage for new account-stat indexes.
+- Improved first-shot UX and safety after review: conflicting file+stdin import sources now hard-fail, dry-run next-step commands are more actionable, and root help now surfaces `driggsby accounts`.
+- Fixed undo correctness bug by reconciling account metadata for touched keys, preventing stale `account_type` state from blocking valid future imports after revert.
+- Reduced renderer drift risk by extracting shared account summary/table rendering logic used by both `accounts` and `import` output paths.
+- Verified with full Rust gates: targeted suites, `cargo test --all-features`, `just required-check`, and `just rust-verify` all passed.
