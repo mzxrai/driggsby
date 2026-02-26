@@ -16,13 +16,13 @@ When instructed to prepare a plan for the user, follow this structured process:
 3. Prepare a detailed plan prescribing the tactical implementation (the plan should not contain the code to be written; instead, it should be a detailed "action plan" for implementation). Examine past plan files for inspiration. Design with "lazy" agents like Claude Code (Anthropic) and Codex (OpenAI) in mind as your primary user, especially for public interfaces -- as such, prioritize ease of use (especially for agents), simplicity, and security. Your goal: build an architecture, and featureset, that agents find (a) useful enough to justify the cost of use, (b) so simple and well-documented that it's actually hard to not get the desired result on the "first shot", and (c) more secure than other options.
 4. For more complex tasks, it may be useful to consult Claude in "agent mode" for its review of your plan, as a "second set of eyes." 
 5. Present your plan to the user, along with any final clarification questions. Perform plan edits as needed based on the user's feedback.
-6. Once the plan is approved and all questions are satisfied, write your plan to a Markdown file, numbered according to our existing pattern/sequence, under `./docs/plans/`. Use Markdown checkboxes for each group of items (you'll check them off as you do the work). Clearly indicate the git worktree directory you created at the top of the plan file. After you've written the plan file, make a git commit with a helpful commit message.
+6. Once the plan is approved and all questions are satisfied, write your plan to a Markdown file, numbered according to our existing pattern/sequence, under `./docs/plans/`. Use Markdown checkboxes for each group of items (you'll check them off as you do the work). If applicable, clearly indicate the git worktree `<feature>` ID you previously selected at the top of the plan file. After you've written the plan file, make a git commit with a helpful commit message.
 </planning-process>
 
 <development-process>
 When instructed to execute a specified plan, or implement a feature or task, follow this structured process:
 
-0. If specified in the plan file, switch to the pre-created git worktree.
+0. If a git worktree `<feature>` ID is specified in the plan file, first run `git worktree list` and `cd` into the directory shown for the specified `<feature>`.
 1. Do detailed research to compile everything you need to complete the task using one or more dedicated research subagents. At a minimum, follow this basic procedure:
   - (a) If specified by the user, review the detailed plan file prescribing the implementation roadmap. 
   - (b) Review the git commit history and the last one or two plan files under `./docs/plans` to understand what was recently implemented and any relevant patterns.
