@@ -83,6 +83,7 @@ When instructed to execute a specified plan, or implement a feature or task, fol
 9. Keep it simple, stupid. Keep functions and code as simple/readable as possible; avoid long one-liners or "clever" code. Follow the principle of least surprise.
 10. Design interfaces & write code in such a way that the next agent that works on the codebase (or the end-user's agent evaluating our project) will find it intuitive and well-structured.
 11. When writing Rust, use edition 2024 idioms, keep modules/functions small, and prefer explicit types/contracts for agent readability.
+12. The CLI should be a "thin client" on top of the client library. Keep all meaningful logic inside the client. Architect Driggsby so that additional thin layers such as MCPs or API servers may be added on top of the client with minimal fuss.
 </key-guidelines>
 
 <rust-safety-rules>
