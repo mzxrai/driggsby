@@ -27,8 +27,22 @@ fn run_import(
     dry_run: bool,
     stdin_override: Option<&str>,
 ) -> driggsby_client::ClientResult<driggsby_client::SuccessEnvelope> {
+    run_import_with_raw_path(
+        home,
+        path.map(|value| value.display().to_string()),
+        dry_run,
+        stdin_override,
+    )
+}
+
+fn run_import_with_raw_path(
+    home: &Path,
+    path: Option<String>,
+    dry_run: bool,
+    stdin_override: Option<&str>,
+) -> driggsby_client::ClientResult<driggsby_client::SuccessEnvelope> {
     import::run_with_options(ImportRunOptions {
-        path: path.map(|value| value.display().to_string()),
+        path,
         dry_run,
         home_override: Some(home),
         stdin_override: stdin_override.map(std::string::ToString::to_string),
@@ -300,6 +314,54 @@ fn file_and_stdin_prefers_file_and_emits_warning_metadata() {
 }
 
 #[test]
+fn stdin_dash_alias_uses_stdin_source() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+
+        let stdin_body = r#"[
+  {"statement_id":"chase_checking_1234_2026-09-30","account_key":"chase_checking_1234","posted_at":"2026-09-01","amount":-4.50,"currency":"USD","description":"DASH-STDIN"}
+]"#;
+
+        let result = run_import_with_raw_path(&home, Some("-".to_string()), true, Some(stdin_body));
+        assert!(result.is_ok());
+        if let Ok(success) = result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                assert_eq!(
+                    value["data"]["source_used"],
+                    Value::String("stdin".to_string())
+                );
+                assert!(value["data"]["source_ignored"].is_null());
+                assert_eq!(value["data"]["source_conflict"], Value::Bool(false));
+                assert_eq!(value["data"]["summary"]["rows_read"], Value::from(1));
+            }
+        }
+    }
+}
+
+#[test]
+fn stdin_dash_alias_without_stdin_content_returns_guidance_error() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+
+        let result = run_import_with_raw_path(&home, Some("-".to_string()), true, Some(" \n "));
+        assert!(result.is_err());
+        if let Err(error) = result {
+            assert_eq!(error.code, "invalid_argument");
+            assert!(error.message.contains("stdin"));
+            assert!(error.message.contains("-"));
+        }
+    }
+}
+
+#[test]
 fn ndjson_source_is_rejected() {
     let temp = temp_home();
     assert!(temp.is_ok());
@@ -526,6 +588,138 @@ fn json_import_missing_statement_id_fails_validation() {
                     value["error"]["data"]["issues"][0]["code"],
                     Value::String("missing_required_field".to_string())
                 );
+            }
+        }
+    }
+}
+
+#[test]
+fn amount_with_more_than_two_decimals_fails_validation() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("invalid-amount-scale.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &source_path,
+            r#"[
+  {"statement_id":"chase_checking_1234_2026-10-31","account_key":"chase_checking_1234","posted_at":"2026-10-01","amount":-12.345,"currency":"USD","description":"TOO-MANY-DECIMALS"}
+]"#,
+        );
+
+        let result = run_import(&home, Some(&source_path), true, None);
+        assert!(result.is_err());
+        if let Err(error) = result {
+            assert_eq!(error.code, "import_validation_failed");
+            let envelope = failure_from_error(&error);
+            let as_json = serde_json::to_value(envelope);
+            assert!(as_json.is_ok());
+            if let Ok(value) = as_json {
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["field"],
+                    Value::String("amount".to_string())
+                );
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["code"],
+                    Value::String("invalid_amount_scale".to_string())
+                );
+                assert!(
+                    value["error"]["data"]["issues"][0]["description"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .contains("2 decimal")
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn amount_with_scientific_notation_over_two_decimals_fails_validation() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("invalid-amount-scientific.csv");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &source_path,
+            "statement_id,account_key,posted_at,amount,currency,description\nacct_scale_1_2026-10-31,acct_scale_1,2026-10-03,1e-3,USD,SCI-NOTATION\n",
+        );
+
+        let result = run_import(&home, Some(&source_path), true, None);
+        assert!(result.is_err());
+        if let Err(error) = result {
+            assert_eq!(error.code, "import_validation_failed");
+            let envelope = failure_from_error(&error);
+            let as_json = serde_json::to_value(envelope);
+            assert!(as_json.is_ok());
+            if let Ok(value) = as_json {
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["code"],
+                    Value::String("invalid_amount_scale".to_string())
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn amount_with_leading_dot_over_two_decimals_fails_validation() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("invalid-amount-leading-dot.csv");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &source_path,
+            "statement_id,account_key,posted_at,amount,currency,description\nacct_scale_1_2026-10-31,acct_scale_1,2026-10-04,.1234,USD,LEADING-DOT\n",
+        );
+
+        let result = run_import(&home, Some(&source_path), true, None);
+        assert!(result.is_err());
+        if let Err(error) = result {
+            assert_eq!(error.code, "import_validation_failed");
+            let envelope = failure_from_error(&error);
+            let as_json = serde_json::to_value(envelope);
+            assert!(as_json.is_ok());
+            if let Ok(value) = as_json {
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["code"],
+                    Value::String("invalid_amount_scale".to_string())
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn two_decimal_and_integer_amounts_pass_validation() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("valid-amount-scale.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &source_path,
+            r#"[
+  {"statement_id":"chase_checking_1234_2026-10-31","account_key":"chase_checking_1234","posted_at":"2026-10-01","amount":-12.34,"currency":"USD","description":"TWO-DECIMAL"},
+  {"statement_id":"chase_checking_1234_2026-10-31","account_key":"chase_checking_1234","posted_at":"2026-10-02","amount":15,"currency":"USD","description":"INTEGER"}
+]"#,
+        );
+
+        let result = run_import(&home, Some(&source_path), false, None);
+        assert!(result.is_ok());
+        if let Ok(success) = result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                assert_eq!(value["data"]["summary"]["rows_read"], Value::from(2));
+                assert_eq!(value["data"]["summary"]["rows_invalid"], Value::from(0));
+                assert_eq!(value["data"]["summary"]["inserted"], Value::from(2));
             }
         }
     }
@@ -1047,6 +1241,136 @@ fn import_duplicates_empty_result_returns_deterministic_payload() {
                     assert_eq!(value["data"]["import_id"], Value::String(id.to_string()));
                     assert_eq!(value["data"]["total"], Value::from(0));
                     assert_eq!(value["data"]["rows"], Value::Array(Vec::new()));
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn duplicates_report_live_and_historical_match_pointers_after_promotion() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let winner_path = home.join("winner-live-pointer.json");
+        let candidate_path = home.join("candidate-live-pointer.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+
+        write_file(
+            &winner_path,
+            r#"[
+  {"statement_id":"acct_live_1_2026-11-30","account_key":"acct_live_1","posted_at":"2026-11-10","amount":-31.00,"currency":"USD","description":"LIVE-POINTER"}
+]"#,
+        );
+        write_file(
+            &candidate_path,
+            r#"[
+  {"statement_id":"acct_live_1_2026-12-31","account_key":"acct_live_1","posted_at":"2026-11-10","amount":-31.00,"currency":"USD","description":"LIVE-POINTER"}
+]"#,
+        );
+
+        let first_result = run_import(&home, Some(&winner_path), false, None);
+        assert!(first_result.is_ok());
+        let second_result = run_import(&home, Some(&candidate_path), false, None);
+        assert!(second_result.is_ok());
+
+        let mut first_import_id = None;
+        let mut second_import_id = None;
+        if let Ok(success) = first_result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                first_import_id = extract_import_id(&value);
+            }
+        }
+        if let Ok(success) = second_result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                second_import_id = extract_import_id(&value);
+            }
+        }
+
+        assert!(first_import_id.is_some());
+        assert!(second_import_id.is_some());
+        let db_path = home.join("ledger.db");
+
+        let first_live_txn_id = query_optional_string(
+            &db_path,
+            "SELECT txn_id
+             FROM internal_transactions
+             WHERE description = 'LIVE-POINTER'
+             ORDER BY txn_id ASC
+             LIMIT 1",
+        );
+        assert!(first_live_txn_id.is_some());
+
+        if let Some(second_id) = second_import_id.as_deref() {
+            let before_duplicates = run_import_duplicates(&home, second_id);
+            assert!(before_duplicates.is_ok());
+            if let Ok(success) = before_duplicates {
+                let payload = serde_json::to_value(success);
+                assert!(payload.is_ok());
+                if let Ok(value) = payload {
+                    assert_eq!(value["data"]["total"], Value::from(1));
+                    assert_eq!(
+                        value["data"]["rows"][0]["matched_txn_id"],
+                        Value::String(first_live_txn_id.clone().unwrap_or_default())
+                    );
+                    assert_eq!(
+                        value["data"]["rows"][0]["matched_import_id_at_dedupe"],
+                        Value::String(first_import_id.clone().unwrap_or_default())
+                    );
+                    assert_eq!(
+                        value["data"]["rows"][0]["matched_txn_id_at_dedupe"],
+                        Value::String(first_live_txn_id.clone().unwrap_or_default())
+                    );
+                }
+            }
+        }
+
+        if let Some(first_id) = first_import_id.as_deref() {
+            let undo_result = run_import_undo(&home, first_id);
+            assert!(undo_result.is_ok());
+        }
+
+        let second_live_txn_id = query_optional_string(
+            &db_path,
+            &format!(
+                "SELECT txn_id
+                 FROM internal_transactions
+                 WHERE import_id = '{}'
+                 ORDER BY txn_id ASC
+                 LIMIT 1",
+                second_import_id.clone().unwrap_or_default()
+            ),
+        );
+        assert!(second_live_txn_id.is_some());
+
+        if let Some(second_id) = second_import_id.as_deref() {
+            let after_duplicates = run_import_duplicates(&home, second_id);
+            assert!(after_duplicates.is_ok());
+            if let Ok(success) = after_duplicates {
+                let payload = serde_json::to_value(success);
+                assert!(payload.is_ok());
+                if let Ok(value) = payload {
+                    assert_eq!(
+                        value["data"]["rows"][0]["matched_txn_id"],
+                        Value::String(second_live_txn_id.clone().unwrap_or_default())
+                    );
+                    assert_eq!(
+                        value["data"]["rows"][0]["matched_import_id"],
+                        Value::String(second_id.to_string())
+                    );
+                    assert_eq!(
+                        value["data"]["rows"][0]["matched_txn_id_at_dedupe"],
+                        Value::String(first_live_txn_id.unwrap_or_default())
+                    );
+                    assert_eq!(
+                        value["data"]["rows"][0]["matched_import_id_at_dedupe"],
+                        Value::String(first_import_id.unwrap_or_default())
+                    );
                 }
             }
         }

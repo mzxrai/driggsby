@@ -120,6 +120,8 @@ pub struct ImportDuplicateRow {
     pub matched_batch_row_index: Option<i64>,
     pub matched_txn_id: Option<String>,
     pub matched_import_id: Option<String>,
+    pub matched_txn_id_at_dedupe: Option<String>,
+    pub matched_import_id_at_dedupe: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

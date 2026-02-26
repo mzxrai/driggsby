@@ -196,21 +196,49 @@ pub fn duplicates_with_options(
     let mut statement = connection
         .prepare(
             "SELECT
-                source_row_index,
-                dedupe_reason,
-                statement_id,
-                account_key,
-                posted_at,
-                amount,
-                currency,
-                description,
-                external_id,
-                matched_batch_row_index,
-                matched_txn_id,
-                matched_import_id
-             FROM internal_transaction_dedupe_candidates
-             WHERE import_id = ?1
-             ORDER BY source_row_index ASC, dedupe_reason ASC, candidate_id ASC",
+                c.source_row_index,
+                c.dedupe_reason,
+                c.statement_id,
+                c.account_key,
+                c.posted_at,
+                c.amount,
+                c.currency,
+                c.description,
+                c.external_id,
+                c.matched_batch_row_index,
+                COALESCE(promoted.txn_id, direct.txn_id, fallback.txn_id) AS matched_txn_id,
+                COALESCE(promoted.import_id, direct.import_id, fallback.import_id) AS matched_import_id,
+                c.matched_txn_id AS matched_txn_id_at_dedupe,
+                c.matched_import_id AS matched_import_id_at_dedupe
+             FROM internal_transaction_dedupe_candidates c
+             LEFT JOIN internal_transactions promoted
+               ON promoted.txn_id = c.promoted_txn_id
+             LEFT JOIN internal_transactions direct
+               ON direct.txn_id = c.matched_txn_id
+             LEFT JOIN internal_transactions fallback
+               ON fallback.txn_id = (
+                    SELECT t.txn_id
+                    FROM internal_transactions t
+                    -- Keep this predicate aligned with import::dedupe::find_existing_match.
+                    WHERE c.dedupe_reason = 'existing_ledger'
+                      AND (
+                        (c.external_id IS NOT NULL
+                         AND t.account_key = c.account_key
+                         AND t.external_id = c.external_id)
+                        OR
+                        (c.external_id IS NULL
+                         AND t.account_key = c.account_key
+                         AND t.posted_at = c.posted_at
+                         AND t.amount = c.amount
+                         AND t.currency = c.currency
+                         AND t.description = c.description
+                         AND t.statement_id != c.statement_id)
+                      )
+                    ORDER BY t.txn_id ASC
+                    LIMIT 1
+               )
+             WHERE c.import_id = ?1
+             ORDER BY c.source_row_index ASC, c.dedupe_reason ASC, c.candidate_id ASC",
         )
         .map_err(|error| map_sqlite_error(&db_path, &error))?;
 
@@ -229,6 +257,8 @@ pub fn duplicates_with_options(
                 matched_batch_row_index: row.get(9)?,
                 matched_txn_id: row.get(10)?,
                 matched_import_id: row.get(11)?,
+                matched_txn_id_at_dedupe: row.get(12)?,
+                matched_import_id_at_dedupe: row.get(13)?,
             })
         })
         .map_err(|error| map_sqlite_error(&db_path, &error))?;

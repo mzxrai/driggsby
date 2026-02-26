@@ -103,7 +103,8 @@ fn run() -> Result<ExitCode, ExitCode> {
             let clean_message = strip_clap_boilerplate(&err.to_string());
             let parse_error =
                 ClientError::invalid_argument_for_command(&clean_message, command_hint.as_deref());
-            if output::print_failure(&parse_error, output::OutputMode::Text).is_err() {
+            let mode = infer_requested_output_mode(&raw_args);
+            if output::print_failure(&parse_error, mode).is_err() {
                 return Err(ExitCode::from(2));
             }
             return Err(ExitCode::from(1));
@@ -150,24 +151,36 @@ fn strip_clap_boilerplate(message: &str) -> String {
 /// Collects non-flag, non-path-like arguments after the binary name to form
 /// a command string like "import undo" or "schema view".
 fn command_path_from_args(raw_args: &[String]) -> Option<String> {
-    if raw_args.len() >= 4
-        && raw_args[1] == "import"
-        && raw_args[2] == "keys"
-        && raw_args[3] == "uniq"
-    {
-        return Some("import keys uniq".to_string());
-    }
-
-    let parts: Vec<&str> = raw_args
+    let non_flags: Vec<&str> = raw_args
         .iter()
         .skip(1)
-        .filter(|a| !a.starts_with('-') && !a.contains('.') && !a.contains('/'))
+        .filter(|value| !value.starts_with('-'))
         .map(String::as_str)
         .collect();
-    if parts.is_empty() {
+    if non_flags.is_empty() {
         return None;
     }
-    Some(parts.join(" "))
+
+    let hint = match non_flags.as_slice() {
+        ["import", "keys", "uniq", ..] => Some("import keys uniq"),
+        ["import", "create", ..] => Some("import create"),
+        ["import", "list", ..] => Some("import list"),
+        ["import", "duplicates", ..] => Some("import duplicates"),
+        ["import", "undo", ..] => Some("import undo"),
+        ["import", "keys", ..] => Some("import keys"),
+        ["import", ..] => Some("import"),
+        ["schema", "view", ..] => Some("schema view"),
+        ["schema", ..] => Some("schema"),
+        ["demo", "dash", ..] => Some("demo dash"),
+        ["demo", "recurring", ..] => Some("demo recurring"),
+        ["demo", "anomalies", ..] => Some("demo anomalies"),
+        ["demo", ..] => Some("demo"),
+        ["anomalies", ..] => Some("anomalies"),
+        ["recurring", ..] => Some("recurring"),
+        ["dash", ..] => Some("dash"),
+        _ => None,
+    };
+    hint.map(std::string::ToString::to_string)
 }
 
 fn exit_code_for_error(error: &ClientError) -> ExitCode {
@@ -176,6 +189,13 @@ fn exit_code_for_error(error: &ClientError) -> ExitCode {
     } else {
         ExitCode::from(1)
     }
+}
+
+fn infer_requested_output_mode(raw_args: &[String]) -> output::OutputMode {
+    if raw_args.iter().skip(1).any(|value| value == "--json") {
+        return output::OutputMode::Json;
+    }
+    output::OutputMode::Text
 }
 
 fn is_internal_error(error: &ClientError) -> bool {
