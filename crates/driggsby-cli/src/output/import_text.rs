@@ -45,7 +45,12 @@ pub fn render_import_run(data: &Value) -> io::Result<String> {
     entries.push(("Inserted:", get_i64(summary, "inserted").to_string()));
 
     lines.extend(format::key_value_rows(&entries, 2));
+    let source_warnings = render_source_warnings(data);
     lines.push(String::new());
+    if !source_warnings.is_empty() {
+        lines.extend(source_warnings);
+        lines.push(String::new());
+    }
     lines.extend(render_duplicate_summary_and_preview(data));
 
     if dry_run {
@@ -493,6 +498,68 @@ fn render_duplicate_row(row: &Value, ordinal: usize) -> Vec<String> {
         lines.push(format!(
             "   Match: Ledger transaction {matched_txn} (from import {matched_import})"
         ));
+
+        let historical_txn = row
+            .get("matched_txn_id_at_dedupe")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let historical_import = row
+            .get("matched_import_id_at_dedupe")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if !historical_txn.is_empty()
+            && !historical_import.is_empty()
+            && (historical_txn != matched_txn || historical_import != matched_import)
+        {
+            lines.push(format!(
+                "   Originally matched: {historical_txn} (from import {historical_import})"
+            ));
+        }
+    }
+
+    lines
+}
+
+fn render_source_warnings(data: &Value) -> Vec<String> {
+    let mut lines = Vec::new();
+    let warnings = data
+        .get("warnings")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let source_conflict = data
+        .get("source_conflict")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    if warnings.is_empty() && !source_conflict {
+        return lines;
+    }
+
+    lines.push("Warnings:".to_string());
+
+    if source_conflict {
+        let source_used = data
+            .get("source_used")
+            .and_then(Value::as_str)
+            .unwrap_or("file");
+        let source_ignored = data
+            .get("source_ignored")
+            .and_then(Value::as_str)
+            .unwrap_or("stdin");
+        lines.push(format!(
+            "  Both file and stdin were provided. Using {source_used}; {source_ignored} was ignored."
+        ));
+    }
+
+    for warning in warnings {
+        let code = warning.get("code").and_then(Value::as_str).unwrap_or("");
+        if source_conflict && code == "stdin_ignored_file_provided" {
+            continue;
+        }
+        if let Some(message) = warning.get("message").and_then(Value::as_str) {
+            lines.push(format!("  {message}"));
+        }
     }
 
     lines
@@ -1012,6 +1079,42 @@ mod tests {
     }
 
     #[test]
+    fn import_list_orders_by_import_id_when_created_at_ties() {
+        let payload = json!({
+            "rows": [
+                {
+                    "import_id": "imp_a",
+                    "status": "committed",
+                    "created_at": "1735689600",
+                    "rows_read": 1,
+                    "inserted": 1,
+                    "deduped": 0
+                },
+                {
+                    "import_id": "imp_b",
+                    "status": "committed",
+                    "created_at": "1735689600",
+                    "rows_read": 1,
+                    "inserted": 1,
+                    "deduped": 0
+                }
+            ]
+        });
+
+        let rendered = render_import_list(&payload);
+        assert!(rendered.is_ok());
+        if let Ok(text) = rendered {
+            let first_index = text.find("imp_b");
+            let second_index = text.find("imp_a");
+            assert!(first_index.is_some());
+            assert!(second_index.is_some());
+            if let (Some(first), Some(second)) = (first_index, second_index) {
+                assert!(first < second);
+            }
+        }
+    }
+
+    #[test]
     fn import_run_renders_duplicate_summary_and_preview_sections() {
         let payload = json!({
             "dry_run": false,
@@ -1098,6 +1201,46 @@ mod tests {
             assert!(text.contains(
                 "Duplicates Preview (showing first 50 of 55 duplicate rows; truncated):"
             ));
+        }
+    }
+
+    #[test]
+    fn import_run_renders_source_conflict_warnings() {
+        let payload = json!({
+            "dry_run": true,
+            "summary": {
+                "rows_read": 1,
+                "rows_valid": 1,
+                "rows_invalid": 0,
+                "inserted": 0
+            },
+            "duplicate_summary": {
+                "total": 0,
+                "batch": 0,
+                "existing_ledger": 0
+            },
+            "duplicates_preview": {
+                "returned": 0,
+                "truncated": false,
+                "rows": []
+            },
+            "warnings": [
+                {
+                    "code": "stdin_ignored_file_provided",
+                    "message": "Both stdin and file were provided; file input was used."
+                }
+            ],
+            "source_conflict": true,
+            "source_used": "file",
+            "source_ignored": "stdin"
+        });
+
+        let rendered = render_import_run(&payload);
+        assert!(rendered.is_ok());
+        if let Ok(text) = rendered {
+            assert!(text.contains("Warnings:"));
+            assert!(text.contains("stdin"));
+            assert!(text.contains("ignored"));
         }
     }
 }

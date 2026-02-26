@@ -145,6 +145,14 @@ fn assert_text_error_contract(body: &str, code: &str) {
     assert!(body.contains("What to do next:"));
 }
 
+fn assert_json_error_contract(body: &str, code: &str) -> Value {
+    let payload = parse_json(body);
+    assert_eq!(payload["error"]["code"], Value::String(code.to_string()));
+    assert!(payload["error"]["message"].is_string());
+    assert!(payload["error"]["recovery_steps"].is_array());
+    payload
+}
+
 #[test]
 fn root_command_uses_short_plaintext_help() {
     let (ok, body, _) = run_cli(&[]);
@@ -215,6 +223,7 @@ fn schema_output_is_plaintext_and_data_access_focused() {
     assert!(body.contains("Readonly URI:"));
     assert!(body.contains("Connect with sqlite3:"));
     assert!(body.contains("Public Views:"));
+    assert!(body.contains("semantic contract"));
     assert!(body.contains("View: v1_transactions"));
     assert!(body.contains("View: v1_accounts"));
     assert!(body.contains("View: v1_imports"));
@@ -229,6 +238,7 @@ fn schema_view_output_is_plaintext() {
     assert!(ok);
     assert!(body.starts_with("View details for v1_transactions."));
     assert!(body.contains("Columns:"));
+    assert!(body.contains("semantic contract"));
     assert!(body.contains("txn_id"));
     assert!(body.contains("not null"));
     assert!(!body.contains("\"ok\""));
@@ -379,6 +389,15 @@ fn import_list_plaintext_and_json_contracts_are_both_supported() {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["status"], Value::String("reverted".to_string()));
         assert!(rows[0]["import_id"].is_string());
+        assert!(rows[0]["timestamps"]["created"]["epoch_s"].is_i64());
+        assert!(rows[0]["timestamps"]["created"]["utc"].is_string());
+        assert!(rows[0]["timestamps"]["created"]["local"].is_string());
+        assert!(rows[0]["timestamps"]["committed"]["epoch_s"].is_i64());
+        assert!(rows[0]["timestamps"]["committed"]["utc"].is_string());
+        assert!(rows[0]["timestamps"]["committed"]["local"].is_string());
+        assert!(rows[0]["timestamps"]["reverted"]["epoch_s"].is_i64());
+        assert!(rows[0]["timestamps"]["reverted"]["utc"].is_string());
+        assert!(rows[0]["timestamps"]["reverted"]["local"].is_string());
     }
 }
 
@@ -635,18 +654,21 @@ fn import_keys_uniq_plaintext_and_json_contracts_are_supported() {
 }
 
 #[test]
-fn import_keys_uniq_invalid_property_is_plaintext_error_even_with_json_flag() {
+fn import_keys_uniq_invalid_property_is_json_error_with_json_flag() {
     let (ok, body, _) = run_cli(&["import", "keys", "uniq", "acct", "--json"]);
     assert!(!ok);
-    assert_text_error_contract(&body, "invalid_argument");
-    assert!(!body.trim_start().starts_with('{'));
+    let payload = assert_json_error_contract(&body, "invalid_argument");
+    assert_eq!(
+        payload["error"]["data"]["command_hint"],
+        Value::String("import keys uniq".to_string())
+    );
 }
 
 #[test]
 fn unsupported_json_flag_on_plaintext_only_command_is_rejected() {
     let (ok, body, _) = run_cli(&["schema", "--json"]);
     assert!(!ok);
-    assert_text_error_contract(&body, "invalid_argument");
+    let _payload = assert_json_error_contract(&body, "invalid_argument");
 }
 
 #[test]
@@ -681,22 +703,87 @@ fn anomalies_and_recurring_json_use_structured_objects() {
 }
 
 #[test]
-fn parse_and_argument_errors_are_always_plaintext_even_when_json_is_present() {
+fn parse_and_argument_errors_are_json_when_json_flag_is_present() {
     let (parse_ok, parse_body, _) = run_cli(&["anomalies", "--json", "--from", "2026-99-01"]);
     assert!(!parse_ok);
-    assert_text_error_contract(&parse_body, "invalid_argument");
-    assert!(!parse_body.trim_start().starts_with('{'));
+    let parse_payload = assert_json_error_contract(&parse_body, "invalid_argument");
+    assert_eq!(
+        parse_payload["error"]["data"]["command_hint"],
+        Value::String("anomalies".to_string())
+    );
 
     let (arg_ok, arg_body, _) = run_cli(&["import", "create", "--json"]);
     assert!(!arg_ok);
-    assert_text_error_contract(&arg_body, "invalid_argument");
-    assert!(!arg_body.trim_start().starts_with('{'));
+    let _arg_payload = assert_json_error_contract(&arg_body, "invalid_argument");
 
     let (keys_ok, keys_body, _) = run_cli(&["import", "keys", "uniq", "acct", "--json"]);
     assert!(!keys_ok);
-    assert_text_error_contract(&keys_body, "invalid_argument");
-    assert!(keys_body.contains("driggsby import keys uniq --help"));
-    assert!(!keys_body.trim_start().starts_with('{'));
+    let keys_payload = assert_json_error_contract(&keys_body, "invalid_argument");
+    assert_eq!(
+        keys_payload["error"]["data"]["command_hint"],
+        Value::String("import keys uniq".to_string())
+    );
+}
+
+#[test]
+fn import_create_dash_reads_stdin_and_empty_stdin_is_rejected() {
+    let home = unique_test_home();
+    let stdin_body = r#"[
+  {"statement_id":"chase_checking_1234_2026-09-30","account_key":"chase_checking_1234","posted_at":"2026-09-04","amount":-5.25,"currency":"USD","description":"DASH-STDIN"}
+]"#;
+    let (ok, body) = run_cli_in_home_with_input(
+        &home,
+        &["import", "create", "--dry-run", "-", "--json"],
+        Some(stdin_body),
+    );
+    assert!(ok);
+    let payload = parse_json(&body);
+    assert_eq!(payload["ok"], Value::Bool(true));
+    assert_eq!(
+        payload["data"]["source_used"],
+        Value::String("stdin".to_string())
+    );
+    assert_eq!(payload["data"]["summary"]["rows_read"], Value::from(1));
+
+    let (empty_ok, empty_body) = run_cli_in_home_with_input(
+        &home,
+        &["import", "create", "--dry-run", "-", "--json"],
+        Some("   \n"),
+    );
+    assert!(!empty_ok);
+    let empty_payload = assert_json_error_contract(&empty_body, "invalid_argument");
+    assert!(
+        empty_payload["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("stdin")
+    );
+}
+
+#[test]
+fn import_plaintext_shows_source_conflict_warning_when_stdin_is_ignored() {
+    let home = unique_test_home();
+    let source_path = write_source_file(
+        &home,
+        "source-conflict.json",
+        r#"[
+  {"statement_id":"chase_checking_1234_2026-09-30","account_key":"chase_checking_1234","posted_at":"2026-09-05","amount":-8.00,"currency":"USD","description":"FILE-WINS"}
+]"#,
+    );
+    let source_arg = source_path.display().to_string();
+    let stdin_body = r#"[
+  {"statement_id":"chase_checking_1234_2026-09-30","account_key":"chase_checking_1234","posted_at":"2026-09-06","amount":-9.00,"currency":"USD","description":"IGNORED-STDIN"}
+]"#;
+
+    let (ok, body) = run_cli_in_home_with_input(
+        &home,
+        &["import", "create", "--dry-run", &source_arg],
+        Some(stdin_body),
+    );
+    assert!(ok);
+    assert!(body.contains("Warnings:"));
+    assert!(body.contains("stdin"));
+    assert!(body.contains("ignored"));
 }
 
 #[test]

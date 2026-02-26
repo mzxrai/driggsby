@@ -150,9 +150,35 @@ fn validate_amount(row: i64, value: Option<String>, issues: &mut Vec<ImportIssue
     };
 
     let parsed = candidate.parse::<f64>();
-    if let Ok(amount) = parsed
-        && amount.is_finite()
-    {
+    if let Ok(amount) = parsed {
+        if !amount.is_finite() {
+            issues.push(ImportIssue {
+                row,
+                field: "amount".to_string(),
+                code: "invalid_number".to_string(),
+                description: format!("amount must be numeric; got \"{candidate}\""),
+                expected: Some("number (e.g. -42.15)".to_string()),
+                received: Some(candidate),
+            });
+            return None;
+        }
+
+        if let Some(scale) = fractional_digits(&candidate)
+            && scale > 2
+        {
+            issues.push(ImportIssue {
+                row,
+                field: "amount".to_string(),
+                code: "invalid_amount_scale".to_string(),
+                description: format!(
+                    "amount must use at most 2 decimal places; got {scale} decimal places."
+                ),
+                expected: Some("number with <= 2 decimal places (e.g. -42.15)".to_string()),
+                received: Some(candidate),
+            });
+            return None;
+        }
+
         return Some(amount);
     }
 
@@ -165,6 +191,67 @@ fn validate_amount(row: i64, value: Option<String>, issues: &mut Vec<ImportIssue
         received: Some(candidate),
     });
     None
+}
+
+fn fractional_digits(value: &str) -> Option<usize> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let (mantissa_raw, exponent_raw) = match trimmed.find(['e', 'E']) {
+        Some(index) => (&trimmed[..index], Some(&trimmed[index + 1..])),
+        None => (trimmed, None),
+    };
+    let exponent = if let Some(raw) = exponent_raw {
+        raw.parse::<i32>().ok()?
+    } else {
+        0
+    };
+
+    let mantissa = mantissa_raw
+        .strip_prefix('+')
+        .or_else(|| mantissa_raw.strip_prefix('-'))
+        .unwrap_or(mantissa_raw);
+    if mantissa.is_empty() {
+        return None;
+    }
+
+    let mut parts = mantissa.split('.');
+    let whole = parts.next()?;
+    let fractional = parts.next();
+    if parts.next().is_some() {
+        return None;
+    }
+
+    let whole_is_digits_or_empty = whole.chars().all(|character| character.is_ascii_digit());
+    if !whole_is_digits_or_empty {
+        return None;
+    }
+
+    let base_scale = if let Some(fractional_digits) = fractional {
+        if !fractional_digits
+            .chars()
+            .all(|character| character.is_ascii_digit())
+        {
+            return None;
+        }
+        if whole.is_empty() && fractional_digits.is_empty() {
+            return None;
+        }
+        fractional_digits.len()
+    } else {
+        if whole.is_empty() {
+            return None;
+        }
+        0
+    };
+
+    if exponent >= 0 {
+        return Some(base_scale.saturating_sub(exponent as usize));
+    }
+
+    Some(base_scale.saturating_add(exponent.unsigned_abs() as usize))
 }
 
 fn validate_currency(

@@ -57,7 +57,9 @@ How import works:
     JSON — one top-level array of transaction objects
     CSV  — one header row with schema field names
 
-  <path> is a local file path. You can also pipe from stdin.
+  <path> is a local file path.
+  To read stdin explicitly, use `-` as the path.
+  Example: cat rows.json | driggsby import create --dry-run -
   One import call takes one file. For multiple files, combine
   first or run multiple import commands.
 
@@ -127,6 +129,7 @@ Field rules (very explicit):
   amount (required):
     A number, not text.
     Negative means money out. Positive means money in.
+    Use at most 2 decimal places.
     Example charge: -42.15
     Example refund/payment: 42.15
 
@@ -230,7 +233,7 @@ pub enum ImportCommand {
         /// Emit machine-readable JSON output
         #[arg(long)]
         json: bool,
-        /// Path to a normalized JSON or CSV file
+        /// Path to a normalized JSON or CSV file (use `-` for stdin)
         path: Option<String>,
     },
     /// List all past imports with their status and row counts

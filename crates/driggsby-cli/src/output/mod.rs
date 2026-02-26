@@ -23,10 +23,9 @@ pub fn print_success(success: &SuccessEnvelope, mode: OutputMode) -> io::Result<
 }
 
 pub fn print_failure(error: &ClientError, mode: OutputMode) -> io::Result<()> {
-    let body = if mode == OutputMode::Json && error.code != "invalid_argument" {
-        json::render_error_json(error)?
-    } else {
-        error_text::render_error(error)
+    let body = match mode {
+        OutputMode::Json => json::render_error_json(error)?,
+        OutputMode::Text => error_text::render_error(error),
     };
     println!("{body}");
     Ok(())

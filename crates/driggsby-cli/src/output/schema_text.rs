@@ -16,6 +16,10 @@ pub fn render_schema_summary(data: &Value) -> io::Result<String> {
     let mut lines = vec![
         "Your ledger database is stored locally and can be queried with sqlite3 or any SQL client."
             .to_string(),
+        "These views and columns are the Driggsby semantic contract for agent and human queries."
+            .to_string(),
+        "SQLite physical metadata for views (for example `PRAGMA table_info(...)`) may differ."
+            .to_string(),
         String::new(),
         "Summary:".to_string(),
     ];
@@ -72,6 +76,8 @@ pub fn render_schema_view(data: &Value) -> io::Result<String> {
 
     let mut lines = vec![
         format!("View details for {view_name}."),
+        "Columns shown here are the Driggsby semantic contract for this view.".to_string(),
+        "SQLite physical metadata for views may differ (for example via PRAGMA).".to_string(),
         String::new(),
         "Columns:".to_string(),
     ];
@@ -153,6 +159,7 @@ mod tests {
         if let Ok(text) = rendered {
             assert!(text.starts_with("Your ledger database is stored locally"));
             assert!(text.contains("Public Views:"));
+            assert!(text.contains("semantic contract"));
             assert!(text.contains("View: v1_transactions"));
             assert!(text.contains("txn_id"));
         }
@@ -172,6 +179,7 @@ mod tests {
         if let Ok(text) = rendered {
             assert!(text.starts_with("View details for v1_transactions."));
             assert!(text.contains("Columns:"));
+            assert!(text.contains("semantic contract"));
             assert!(text.contains("not null"));
         }
     }

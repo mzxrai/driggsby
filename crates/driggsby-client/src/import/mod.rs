@@ -247,6 +247,8 @@ pub(crate) fn duplicate_record_to_contract(record: &dedupe::DuplicateRecord) -> 
         matched_batch_row_index: record.matched_batch_row_index,
         matched_txn_id: record.matched_txn_id.clone(),
         matched_import_id: record.matched_import_id.clone(),
+        matched_txn_id_at_dedupe: record.matched_txn_id.clone(),
+        matched_import_id_at_dedupe: record.matched_import_id.clone(),
     }
 }
 

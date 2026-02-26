@@ -49,7 +49,13 @@ impl ClientError {
             Some(cmd) => format!("Run `driggsby {cmd} --help` for usage."),
             None => "Run `driggsby --help` for usage.".to_string(),
         };
-        Self::new("invalid_argument", message, vec![help_hint])
+        let error = Self::new("invalid_argument", message, vec![help_hint]);
+        if let Some(cmd) = command {
+            return error.with_data(json!({
+                "command_hint": cmd,
+            }));
+        }
+        error
     }
 
     pub fn invalid_argument_with_recovery(message: &str, recovery_steps: Vec<String>) -> Self {

@@ -1,5 +1,6 @@
 use std::io;
 
+use chrono::{Local, TimeZone, Utc};
 use driggsby_client::{ClientError, SuccessEnvelope};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -62,12 +63,16 @@ fn render_import_list_json(data: &Value) -> Value {
         .unwrap_or_default();
 
     rows.sort_by(|left, right| {
-        let left_created = parse_created_at(left);
-        let right_created = parse_created_at(right);
+        let left_created = parse_epoch_from_field(left, "created_at").unwrap_or(0);
+        let right_created = parse_epoch_from_field(right, "created_at").unwrap_or(0);
         right_created
             .cmp(&left_created)
             .then_with(|| value_string(right, "import_id").cmp(&value_string(left, "import_id")))
     });
+
+    for row in &mut rows {
+        add_timestamp_bundle(row);
+    }
 
     Value::Array(rows)
 }
@@ -133,16 +138,57 @@ fn render_recurring_json(data: &Value) -> Value {
     })
 }
 
-fn parse_created_at(row: &Value) -> i64 {
-    if let Some(raw) = row.get("created_at") {
-        if let Some(value) = raw.as_i64() {
-            return value;
-        }
-        if let Some(text) = raw.as_str() {
-            return text.parse::<i64>().unwrap_or(0);
-        }
+fn parse_epoch(value: Option<&Value>) -> Option<i64> {
+    let raw = value?;
+    if let Some(epoch) = raw.as_i64() {
+        return Some(epoch);
     }
-    0
+    if let Some(text) = raw.as_str() {
+        return text.parse::<i64>().ok();
+    }
+    None
+}
+
+fn parse_epoch_from_field(row: &Value, key: &str) -> Option<i64> {
+    parse_epoch(row.get(key))
+}
+
+fn add_timestamp_bundle(row: &mut Value) {
+    let Some(object) = row.as_object_mut() else {
+        return;
+    };
+
+    let created = timestamp_value(object.get("created_at"));
+    let committed = timestamp_value(object.get("committed_at"));
+    let reverted = timestamp_value(object.get("reverted_at"));
+
+    object.insert(
+        "timestamps".to_string(),
+        json!({
+            "created": created,
+            "committed": committed,
+            "reverted": reverted,
+        }),
+    );
+}
+
+fn timestamp_value(raw: Option<&Value>) -> Value {
+    let Some(epoch_s) = parse_epoch(raw) else {
+        return Value::Null;
+    };
+
+    let Some(utc_dt) = Utc.timestamp_opt(epoch_s, 0).single() else {
+        return Value::Null;
+    };
+    let Some(local_dt) = Local.timestamp_opt(epoch_s, 0).single() else {
+        return Value::Null;
+    };
+
+    json!({
+        "epoch_s": epoch_s,
+        "utc": utc_dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        "local": local_dt.format("%Y-%m-%d %H:%M:%S %:z").to_string(),
+    })
 }
 
 fn value_string(row: &Value, key: &str) -> String {
@@ -181,7 +227,13 @@ mod tests {
             "import list",
             json!({
                 "rows": [
-                    {"import_id": "imp_1", "created_at": "1", "status": "committed"}
+                    {
+                        "import_id": "imp_1",
+                        "created_at": "1",
+                        "committed_at": "2",
+                        "reverted_at": null,
+                        "status": "committed"
+                    }
                 ]
             }),
         );
@@ -194,6 +246,39 @@ mod tests {
             if let Ok(value) = parsed {
                 assert!(value.is_array());
                 assert_eq!(value[0]["import_id"], Value::String("imp_1".to_string()));
+                assert_eq!(value[0]["timestamps"]["created"]["epoch_s"], Value::from(1));
+                assert!(value[0]["timestamps"]["created"]["utc"].is_string());
+                assert!(value[0]["timestamps"]["created"]["local"].is_string());
+                assert_eq!(
+                    value[0]["timestamps"]["committed"]["epoch_s"],
+                    Value::from(2)
+                );
+                assert!(value[0]["timestamps"]["reverted"].is_null());
+            }
+        }
+    }
+
+    #[test]
+    fn import_list_json_orders_by_import_id_when_created_at_ties() {
+        let payload = success(
+            "import list",
+            json!({
+                "rows": [
+                    {"import_id": "imp_a", "created_at": "10", "status": "committed"},
+                    {"import_id": "imp_b", "created_at": "10", "status": "committed"}
+                ]
+            }),
+        );
+
+        let rendered = render_success_json(&payload);
+        assert!(rendered.is_ok());
+        if let Ok(text) = rendered {
+            let parsed: Result<Value, _> = serde_json::from_str(&text);
+            assert!(parsed.is_ok());
+            if let Ok(value) = parsed {
+                assert!(value.is_array());
+                assert_eq!(value[0]["import_id"], Value::String("imp_b".to_string()));
+                assert_eq!(value[1]["import_id"], Value::String("imp_a".to_string()));
             }
         }
     }

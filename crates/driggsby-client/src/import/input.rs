@@ -42,6 +42,26 @@ pub(crate) fn resolve_source(
         .unwrap_or(false);
 
     if let Some(path_value) = path {
+        if path_value == "-" {
+            if let Some(stdin_value) = stdin_body
+                && !stdin_value.trim().is_empty()
+            {
+                return Ok(ResolvedSource {
+                    source_kind: SourceKind::Stdin,
+                    source_ref: None,
+                    content: stdin_value,
+                    source_used: Some("stdin".to_string()),
+                    source_ignored: None,
+                    source_conflict: false,
+                    warnings: Vec::new(),
+                });
+            }
+
+            return Err(invalid_input_error(
+                "Path `-` means stdin input, but stdin was empty. Pipe JSON/CSV input or pass a file path.",
+            ));
+        }
+
         let file_body = fs::read_to_string(&path_value).map_err(|error| {
             ClientError::invalid_argument_with_recovery(
                 &format!("Could not read import file `{path_value}`: {error}"),
