@@ -116,6 +116,19 @@ fn assert_import_summary(payload: &Value, inserted: i64, deduped_total: i64) {
     );
 }
 
+fn action_commands(payload: &Value) -> Vec<String> {
+    payload["data"]["other_actions"]
+        .as_array()
+        .map(|actions| {
+            actions
+                .iter()
+                .filter_map(|action| action.get("command").and_then(Value::as_str))
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<String>>()
+        })
+        .unwrap_or_default()
+}
+
 #[test]
 fn file_only_json_import_success_writes_rows() {
     let temp = temp_home();
@@ -142,7 +155,22 @@ fn file_only_json_import_success_writes_rows() {
                 assert_eq!(value["ok"], Value::Bool(true));
                 assert_eq!(value["command"], Value::String("import".to_string()));
                 assert!(value["data"]["import_id"].is_string());
-                assert_eq!(value["data"]["import_id"], value["data"]["undo_id"]);
+                assert!(value["data"].get("undo_id").is_none());
+                assert_eq!(
+                    value["data"]["next_step"]["command"],
+                    Value::String("driggsby schema".to_string())
+                );
+                let commands = action_commands(&value);
+                assert_eq!(
+                    commands,
+                    vec![
+                        "driggsby import list".to_string(),
+                        format!(
+                            "driggsby import undo {}",
+                            value["data"]["import_id"].as_str().unwrap_or_default()
+                        ),
+                    ]
+                );
                 assert_import_summary(&value, 2, 0);
                 assert!(value["data"]["query_context"].is_object());
             }
@@ -178,6 +206,13 @@ fn dry_run_does_not_write_import_or_transactions() {
             if let Ok(value) = payload {
                 assert_eq!(value["ok"], Value::Bool(true));
                 assert_eq!(value["data"]["dry_run"], Value::Bool(true));
+                assert!(value["data"]["import_id"].is_null());
+                assert_eq!(
+                    value["data"]["next_step"]["command"],
+                    Value::String("driggsby import create <path>".to_string())
+                );
+                let commands = action_commands(&value);
+                assert!(commands.is_empty());
                 assert_import_summary(&value, 0, 0);
             }
         }
@@ -187,6 +222,35 @@ fn dry_run_does_not_write_import_or_transactions() {
         let import_count = query_count(&db_path, "SELECT COUNT(*) FROM internal_import_runs");
         assert_eq!(txn_count, 0);
         assert_eq!(import_count, 0);
+    }
+}
+
+#[test]
+fn dry_run_with_stdin_uses_stdin_commit_next_step() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let stdin_body = r#"[
+  {"statement_id":"chase_checking_1234_2026-01-31","account_key":"chase_checking_1234","posted_at":"2026-01-03","amount":-9.99,"currency":"USD","description":"COFFEE"}
+]"#;
+
+        let result = run_import(&home, None, true, Some(stdin_body));
+        assert!(result.is_ok());
+        if let Ok(success) = result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                assert_eq!(
+                    value["data"]["source_used"],
+                    Value::String("stdin".to_string())
+                );
+                assert_eq!(
+                    value["data"]["next_step"]["command"],
+                    Value::String("driggsby import create".to_string())
+                );
+                assert!(action_commands(&value).is_empty());
+            }
+        }
     }
 }
 
@@ -257,12 +321,13 @@ fn ndjson_source_is_rejected() {
             let as_json = serde_json::to_value(envelope);
             assert!(as_json.is_ok());
             if let Ok(value) = as_json {
+                assert!(value.get("data").is_none());
                 assert_eq!(
-                    value["data"]["help_command"],
+                    value["error"]["data"]["help_command"],
                     Value::String("driggsby import create --help".to_string())
                 );
                 assert_eq!(
-                    value["data"]["help_section_title"],
+                    value["error"]["data"]["help_section_title"],
                     Value::String("Import Troubleshooting".to_string())
                 );
             }
@@ -291,10 +356,11 @@ fn csv_header_mismatch_returns_import_schema_mismatch_with_data() {
             let as_json = serde_json::to_value(envelope);
             assert!(as_json.is_ok());
             if let Ok(value) = as_json {
-                assert!(value["data"]["expected_headers"].is_array());
-                assert!(value["data"]["actual_headers"].is_array());
+                assert!(value.get("data").is_none());
+                assert!(value["error"]["data"]["expected_headers"].is_array());
+                assert!(value["error"]["data"]["actual_headers"].is_array());
                 assert!(
-                    value["data"]["expected_headers"]
+                    value["error"]["data"]["expected_headers"]
                         .as_array()
                         .map(|headers| headers
                             .iter()
@@ -302,11 +368,11 @@ fn csv_header_mismatch_returns_import_schema_mismatch_with_data() {
                         .unwrap_or(false)
                 );
                 assert_eq!(
-                    value["data"]["help_command"],
+                    value["error"]["data"]["help_command"],
                     Value::String("driggsby import create --help".to_string())
                 );
                 assert_eq!(
-                    value["data"]["help_section_title"],
+                    value["error"]["data"]["help_section_title"],
                     Value::String("Import Troubleshooting".to_string())
                 );
             }
@@ -338,18 +404,25 @@ fn row_validation_failures_return_deterministic_issues() {
             let as_json = serde_json::to_value(envelope);
             assert!(as_json.is_ok());
             if let Ok(value) = as_json {
-                assert_eq!(value["data"]["summary"]["rows_read"], Value::from(2));
-                assert_eq!(value["data"]["summary"]["rows_invalid"], Value::from(1));
-                assert!(value["data"]["issues"].is_array());
-                assert!(value["data"]["issues"][0]["row"].is_i64());
-                assert!(value["data"]["issues"][0]["field"].is_string());
-                assert!(value["data"]["issues"][0]["code"].is_string());
+                assert!(value.get("data").is_none());
                 assert_eq!(
-                    value["data"]["help_command"],
+                    value["error"]["data"]["summary"]["rows_read"],
+                    Value::from(2)
+                );
+                assert_eq!(
+                    value["error"]["data"]["summary"]["rows_invalid"],
+                    Value::from(1)
+                );
+                assert!(value["error"]["data"]["issues"].is_array());
+                assert!(value["error"]["data"]["issues"][0]["row"].is_i64());
+                assert!(value["error"]["data"]["issues"][0]["field"].is_string());
+                assert!(value["error"]["data"]["issues"][0]["code"].is_string());
+                assert_eq!(
+                    value["error"]["data"]["help_command"],
                     Value::String("driggsby import create --help".to_string())
                 );
                 assert_eq!(
-                    value["data"]["help_section_title"],
+                    value["error"]["data"]["help_section_title"],
                     Value::String("Import Troubleshooting".to_string())
                 );
             }
@@ -400,6 +473,16 @@ fn dedupe_counts_batch_and_existing_rows() {
                 assert_eq!(value["data"]["summary"]["rows_read"], Value::from(3));
                 assert_eq!(value["data"]["summary"]["inserted"], Value::from(2));
                 assert_eq!(value["data"]["duplicate_summary"]["total"], Value::from(1));
+                let import_id = value["data"]["import_id"].as_str().unwrap_or_default();
+                let commands = action_commands(&value);
+                assert_eq!(
+                    commands,
+                    vec![
+                        "driggsby import list".to_string(),
+                        format!("driggsby import duplicates {import_id}"),
+                        format!("driggsby import undo {import_id}"),
+                    ]
+                );
             }
         }
 
@@ -434,9 +517,14 @@ fn json_import_missing_statement_id_fails_validation() {
             let as_json = serde_json::to_value(envelope);
             assert!(as_json.is_ok());
             if let Ok(value) = as_json {
+                assert!(value.get("data").is_none());
                 assert_eq!(
-                    value["data"]["issues"][0]["field"],
+                    value["error"]["data"]["issues"][0]["field"],
                     Value::String("statement_id".to_string())
+                );
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["code"],
+                    Value::String("missing_required_field".to_string())
                 );
             }
         }
@@ -468,6 +556,15 @@ fn same_statement_repeated_fallback_rows_are_not_deduped() {
                 assert_eq!(value["data"]["summary"]["inserted"], Value::from(2));
                 assert!(value["data"]["summary"]["deduped"].is_null());
                 assert_eq!(value["data"]["duplicate_summary"]["total"], Value::from(0));
+                let import_id = value["data"]["import_id"].as_str().unwrap_or_default();
+                let commands = action_commands(&value);
+                assert_eq!(
+                    commands,
+                    vec![
+                        "driggsby import list".to_string(),
+                        format!("driggsby import undo {import_id}"),
+                    ]
+                );
             }
         }
     }

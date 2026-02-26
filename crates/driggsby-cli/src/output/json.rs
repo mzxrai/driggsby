@@ -29,12 +29,19 @@ pub fn render_success_json(success: &SuccessEnvelope) -> io::Result<String> {
 }
 
 pub fn render_error_json(error: &ClientError) -> io::Result<String> {
+    let mut error_payload = json!({
+        "code": error.code,
+        "message": error.message,
+        "recovery_steps": error.recovery_steps,
+    });
+    if let Some(data) = &error.data
+        && let Some(object) = error_payload.as_object_mut()
+    {
+        object.insert("data".to_string(), data.clone());
+    }
+
     let payload = json!({
-        "error": {
-            "code": error.code,
-            "message": error.message,
-            "recovery_steps": error.recovery_steps,
-        }
+        "error": error_payload
     });
     serialize_json_pretty(&payload)
 }
@@ -194,7 +201,11 @@ mod tests {
     #[test]
     fn runtime_error_json_uses_universal_shape() {
         let error =
-            driggsby_client::ClientError::new("not_found", "missing", vec!["run list".to_string()]);
+            driggsby_client::ClientError::new("not_found", "missing", vec!["run list".to_string()])
+                .with_data(json!({
+                    "resource": "import",
+                    "import_id": "imp_1"
+                }));
         let rendered = render_error_json(&error);
         assert!(rendered.is_ok());
         if let Ok(text) = rendered {
@@ -206,6 +217,35 @@ mod tests {
                     Value::String("not_found".to_string())
                 );
                 assert!(value.get("ok").is_none());
+                assert!(value.get("data").is_none());
+                assert_eq!(
+                    value["error"]["data"]["resource"],
+                    Value::String("import".to_string())
+                );
+                assert_eq!(
+                    value["error"]["data"]["import_id"],
+                    Value::String("imp_1".to_string())
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn runtime_error_json_omits_error_data_when_absent() {
+        let error =
+            driggsby_client::ClientError::new("not_found", "missing", vec!["run list".to_string()]);
+        let rendered = render_error_json(&error);
+        assert!(rendered.is_ok());
+        if let Ok(text) = rendered {
+            let parsed: Result<Value, _> = serde_json::from_str(&text);
+            assert!(parsed.is_ok());
+            if let Ok(value) = parsed {
+                assert_eq!(
+                    value["error"]["code"],
+                    Value::String("not_found".to_string())
+                );
+                assert!(value["error"].get("data").is_none());
+                assert!(value.get("data").is_none());
             }
         }
     }

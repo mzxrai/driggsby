@@ -261,11 +261,15 @@ fn import_dry_run_default_is_plaintext_summary() {
     assert!(body.contains("Per-account sign profile:"));
     assert!(body.contains("Drift warnings:"));
     assert!(body.contains("No rows were written because this was a dry run."));
+    assert!(body.contains("Next step:"));
+    assert!(body.contains("driggsby import create <path>"));
+    assert!(body.contains("Other actions:"));
+    assert!(!body.contains("driggsby import undo"));
     assert!(!body.contains("\"ok\""));
 }
 
 #[test]
-fn import_plaintext_success_shows_import_and_undo_ids() {
+fn import_plaintext_success_shows_import_id_and_safe_actions() {
     let home = unique_test_home();
     let source_path = write_source_file(
         &home,
@@ -279,10 +283,16 @@ fn import_plaintext_success_shows_import_and_undo_ids() {
     assert!(ok);
     assert!(body.starts_with("Import completed successfully."));
     assert!(body.contains("Import ID:"));
-    assert!(body.contains("Undo ID:"));
+    assert!(!body.contains("Undo ID:"));
     assert!(body.contains("Summary:"));
     assert!(body.contains("Duplicate Summary:"));
     assert!(body.contains("Duplicates Preview"));
+    assert!(body.contains("Next step:"));
+    assert!(body.contains("driggsby schema"));
+    assert!(body.contains("Other actions:"));
+    assert!(body.contains("driggsby import list"));
+    assert!(body.contains("driggsby import undo"));
+    assert!(body.contains("(destructive)"));
     assert!(!body.contains("Deduped:"));
     assert!(!body.contains("\"ok\""));
 }
@@ -305,7 +315,23 @@ fn import_json_success_uses_structured_envelope_without_command_field() {
     assert_eq!(payload["ok"], Value::Bool(true));
     assert_eq!(payload["version"], Value::String("v1".to_string()));
     assert!(payload["data"]["import_id"].is_string());
-    assert!(payload["data"]["undo_id"].is_string());
+    assert!(payload["data"].get("undo_id").is_none());
+    assert_eq!(
+        payload["data"]["next_step"]["command"],
+        Value::String("driggsby schema".to_string())
+    );
+    assert!(payload["data"]["next_step"]["label"].is_string());
+    assert!(payload["data"]["other_actions"].is_array());
+    let other_actions = payload["data"]["other_actions"].as_array();
+    assert!(other_actions.is_some());
+    if let Some(actions) = other_actions {
+        assert_eq!(actions.len(), 2);
+        assert_eq!(
+            actions[0]["command"],
+            Value::String("driggsby import list".to_string())
+        );
+        assert_eq!(actions[1]["risk"], Value::String("destructive".to_string()));
+    }
     assert!(payload["data"]["summary"].is_object());
     assert!(payload["data"]["issues"].is_array());
     assert!(payload["data"]["query_context"].is_object());
@@ -431,7 +457,79 @@ fn import_undo_json_runtime_error_uses_universal_error_shape() {
     );
     assert!(payload["error"]["message"].is_string());
     assert!(payload["error"]["recovery_steps"].is_array());
+    assert_eq!(
+        payload["error"]["data"]["import_id"],
+        Value::String("imp_missing".to_string())
+    );
+    assert_eq!(
+        payload["error"]["data"]["help_command"],
+        Value::String("driggsby import create --help".to_string())
+    );
+    assert_eq!(
+        payload["error"]["data"]["help_section_title"],
+        Value::String("Import Troubleshooting".to_string())
+    );
     assert!(payload.get("ok").is_none());
+    assert!(payload.get("data").is_none());
+}
+
+#[test]
+fn import_create_json_validation_error_uses_nested_error_data() {
+    let home = unique_test_home();
+    let source_path = write_source_file(
+        &home,
+        "missing-statement-id.json",
+        r#"[
+  {"account_key":"chase_checking_1234","posted_at":"2026-03-02","amount":-88.00,"currency":"USD","description":"UNDO"}
+]"#,
+    );
+    let source_arg = source_path.display().to_string();
+    let (ok, body) = run_cli_in_home_with_input(
+        &home,
+        &["import", "create", "--dry-run", &source_arg, "--json"],
+        None,
+    );
+    assert!(!ok);
+    let payload = parse_json(&body);
+    assert_eq!(
+        payload["error"]["code"],
+        Value::String("import_validation_failed".to_string())
+    );
+    assert!(payload["error"]["data"]["summary"].is_object());
+    assert!(payload["error"]["data"]["issues"].is_array());
+    assert_eq!(
+        payload["error"]["data"]["issues"][0]["field"],
+        Value::String("statement_id".to_string())
+    );
+    assert_eq!(
+        payload["error"]["data"]["issues"][0]["code"],
+        Value::String("missing_required_field".to_string())
+    );
+    assert!(payload.get("data").is_none());
+}
+
+#[test]
+fn import_create_json_schema_mismatch_error_uses_nested_error_data() {
+    let home = unique_test_home();
+    let source_path = write_source_file(
+        &home,
+        "schema-mismatch.csv",
+        "account,posted_date,amount_usd,description\nx,2026-01-01,-1.00,Test\n",
+    );
+    let source_arg = source_path.display().to_string();
+    let (ok, body) = run_cli_in_home_with_input(
+        &home,
+        &["import", "create", "--dry-run", &source_arg, "--json"],
+        None,
+    );
+    assert!(!ok);
+    let payload = parse_json(&body);
+    assert_eq!(
+        payload["error"]["code"],
+        Value::String("import_schema_mismatch".to_string())
+    );
+    assert!(payload["error"]["data"]["expected_headers"].is_array());
+    assert!(payload["error"]["data"]["actual_headers"].is_array());
     assert!(payload.get("data").is_none());
 }
 
