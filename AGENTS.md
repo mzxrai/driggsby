@@ -110,10 +110,15 @@ Basic rule: Keep Rust boring and safe by default.
   - Testing CLI output: If we decide to change something about how the CLI output is structured, do not simply add tests looking for the absence of the prior format. This clutters tests unnecessarily.
   </testing-guidelines>
 </cli-guidelines>
+ 
+<subagent-instructions>
+- Run bash commands directly; don't use subagents for simple command or script runs.
+- Before spawning subagents, *proactively* close any stale/unused agent threads so that agent spawns don't fail with the "too many agent threads" error.
+- Use subagents for longer-running/higher-value tasks like dedicated planning, research, or review tasks.
+</subagent-instructions>
 
 <additional-instructions>
 - Important note: this is an undeployed greenfield project, and as such we are not attempting to maintain back-compat; make breaking changes.
-- Before spawning subagents, *proactively* close any stale/unused agent threads so that agent spawns don't fail with the "too many agent threads" error.
 - When writing documentation or agent-facing text, be appropriately verbose -- prefer explicitness and making it "so easy a drunk person" could understand it. Make it hard to mis-understand what to do and be wary of your tendency to be terse (terse = harder to understand = makes agents feel unsafe/anxious = no bueno).
 - You may use the git commit history, which is detailed, to understand what was previously done in case you have any questions. 
 - Write tests for *functionality*; don't simply create tests for the sake of having tests.
