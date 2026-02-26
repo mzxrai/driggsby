@@ -45,7 +45,7 @@ just security-local
    1. Dependency Review action on PRs.
    2. `cargo-deny` advisories scan.
    3. Trivy filesystem scan (vulns + secrets + misconfig).
-3. `CodeQL` (`.github/workflows/codeql.yml`):
+3. `CodeQL` (GitHub default setup in repository settings):
    1. Rust static analysis.
 
 All GitHub Actions are pinned to full commit SHAs.
