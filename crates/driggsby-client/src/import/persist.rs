@@ -12,7 +12,6 @@ use crate::state::map_sqlite_error;
 #[derive(Debug, Clone)]
 pub(crate) struct PersistResult {
     pub(crate) import_id: String,
-    pub(crate) undo_id: String,
     pub(crate) inserted: i64,
     pub(crate) duplicate_rows: Vec<DuplicateRecord>,
 }
@@ -33,7 +32,6 @@ pub(crate) fn persist_import(
     input: PersistInput<'_>,
 ) -> ClientResult<PersistResult> {
     let import_id = format!("imp_{}", Ulid::new());
-    let undo_id = import_id.clone();
     let timestamp = now_timestamp();
 
     let transaction = connection
@@ -89,7 +87,6 @@ pub(crate) fn persist_import(
 
     Ok(PersistResult {
         import_id,
-        undo_id,
         inserted,
         duplicate_rows: input.duplicate_rows.to_vec(),
     })

@@ -33,12 +33,7 @@ pub fn render_import_run(data: &Value) -> io::Result<String> {
             .get("import_id")
             .and_then(Value::as_str)
             .unwrap_or("unknown");
-        let undo_id = data
-            .get("undo_id")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
         entries.push(("Import ID:", import_id.to_string()));
-        entries.push(("Undo ID:", undo_id.to_string()));
     }
 
     entries.push(("Rows read:", get_i64(summary, "rows_read").to_string()));
@@ -51,7 +46,7 @@ pub fn render_import_run(data: &Value) -> io::Result<String> {
 
     lines.extend(format::key_value_rows(&entries, 2));
     lines.push(String::new());
-    lines.extend(render_duplicate_summary_and_preview(data, dry_run));
+    lines.extend(render_duplicate_summary_and_preview(data));
 
     if dry_run {
         lines.push(String::new());
@@ -68,13 +63,10 @@ pub fn render_import_run(data: &Value) -> io::Result<String> {
 
         lines.push(String::new());
         lines.push("No rows were written because this was a dry run.".to_string());
-    } else {
-        lines.push(String::new());
-        lines.push(
-            "Undo ID is intentionally shown to make rollback commands obvious for agents."
-                .to_string(),
-        );
     }
+
+    lines.push(String::new());
+    lines.extend(render_next_actions(data));
 
     Ok(lines.join("\n"))
 }
@@ -322,7 +314,7 @@ pub fn render_import_keys_uniq(data: &Value) -> io::Result<String> {
     Ok(lines.join("\n"))
 }
 
-fn render_duplicate_summary_and_preview(data: &Value, dry_run: bool) -> Vec<String> {
+fn render_duplicate_summary_and_preview(data: &Value) -> Vec<String> {
     let mut lines = Vec::new();
     let duplicate_summary = data
         .get("duplicate_summary")
@@ -351,15 +343,18 @@ fn render_duplicate_summary_and_preview(data: &Value, dry_run: bool) -> Vec<Stri
         .cloned()
         .unwrap_or_default();
     let returned = get_i64(&preview, "returned");
+    let total = get_i64(&duplicate_summary, "total");
     let truncated = preview
         .get("truncated")
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
     let status = if truncated {
-        format!("Duplicates Preview ({returned} shown, truncated):")
+        format!(
+            "Duplicates Preview (showing first {returned} of {total} duplicate rows; truncated):"
+        )
     } else {
-        format!("Duplicates Preview ({returned} shown, not truncated):")
+        format!("Duplicates Preview (showing all {total} duplicate rows):")
     };
     lines.push(status);
 
@@ -379,21 +374,56 @@ fn render_duplicate_summary_and_preview(data: &Value, dry_run: bool) -> Vec<Stri
         }
     }
 
-    if truncated {
-        lines.push(String::new());
-        if dry_run {
-            lines.push("Next step:".to_string());
-            lines.push("  Full duplicate inspection requires a committed import id.".to_string());
-            lines.push("  1. Run: driggsby import create <path>".to_string());
-            lines.push("  2. Then run: driggsby import duplicates <import_id>".to_string());
+    lines
+}
+
+fn render_next_actions(data: &Value) -> Vec<String> {
+    let mut lines = Vec::new();
+    lines.push("Next step:".to_string());
+    if let Some(next_step) = data.get("next_step").and_then(Value::as_object) {
+        let label = next_step
+            .get("label")
+            .and_then(Value::as_str)
+            .unwrap_or("Run the next command");
+        let command = next_step
+            .get("command")
+            .and_then(Value::as_str)
+            .unwrap_or("missing_next_step_command");
+        lines.push(format!("  {label}:"));
+        lines.push(format!("  {command}"));
+    } else {
+        lines.push("  Missing `next_step` in import response.".to_string());
+    }
+
+    lines.push(String::new());
+    lines.push("Other actions:".to_string());
+    let Some(actions) = data.get("other_actions").and_then(Value::as_array) else {
+        lines.push("  Missing `other_actions` in import response.".to_string());
+        return lines;
+    };
+
+    if actions.is_empty() {
+        lines.push("  None.".to_string());
+        return lines;
+    }
+
+    for action in actions {
+        let label = action
+            .get("label")
+            .and_then(Value::as_str)
+            .unwrap_or("Action");
+        let command = action
+            .get("command")
+            .and_then(Value::as_str)
+            .unwrap_or("missing_other_action_command");
+        let risk = action
+            .get("risk")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if risk == "destructive" && !label.contains("(destructive)") {
+            lines.push(format!("  - {label} (destructive): {command}"));
         } else {
-            let import_id = data
-                .get("import_id")
-                .and_then(Value::as_str)
-                .unwrap_or("<import_id>");
-            lines.push(format!(
-                "Run driggsby import duplicates {import_id} to inspect all duplicates."
-            ));
+            lines.push(format!("  - {label}: {command}"));
         }
     }
 
@@ -785,7 +815,21 @@ mod tests {
         let payload = json!({
             "dry_run": false,
             "import_id": "imp_1",
-            "undo_id": "imp_1",
+            "next_step": {
+                "label": "Connect and query your data",
+                "command": "driggsby schema"
+            },
+            "other_actions": [
+                {
+                    "label": "View import list",
+                    "command": "driggsby import list"
+                },
+                {
+                    "label": "Undo this import (destructive)",
+                    "command": "driggsby import undo imp_1",
+                    "risk": "destructive"
+                }
+            ],
             "summary": {
                 "rows_read": 10,
                 "rows_valid": 10,
@@ -800,7 +844,10 @@ mod tests {
         if let Ok(text) = rendered {
             assert!(text.starts_with("Import completed successfully."));
             assert!(text.contains("Import ID:"));
-            assert!(text.contains("Undo ID:"));
+            assert!(!text.contains("Undo ID:"));
+            assert!(text.contains("Next step:"));
+            assert!(text.contains("Other actions:"));
+            assert!(text.contains("(destructive)"));
         }
     }
 
@@ -969,7 +1016,11 @@ mod tests {
         let payload = json!({
             "dry_run": false,
             "import_id": "imp_1",
-            "undo_id": "imp_1",
+            "next_step": {
+                "label": "Connect and query your data",
+                "command": "driggsby schema"
+            },
+            "other_actions": [],
             "summary": {
                 "rows_read": 2,
                 "rows_valid": 2,
@@ -1007,9 +1058,46 @@ mod tests {
         assert!(rendered.is_ok());
         if let Ok(text) = rendered {
             assert!(text.contains("Duplicate Summary:"));
-            assert!(text.contains("Duplicates Preview"));
+            assert!(text.contains("Duplicates Preview (showing all 1 duplicate rows):"));
             assert!(text.contains("Duplicate within this import"));
             assert!(text.contains("Row #2"));
+        }
+    }
+
+    #[test]
+    fn import_run_renders_truncated_duplicate_preview_label() {
+        let payload = json!({
+            "dry_run": false,
+            "import_id": "imp_1",
+            "next_step": {
+                "label": "Connect and query your data",
+                "command": "driggsby schema"
+            },
+            "other_actions": [],
+            "summary": {
+                "rows_read": 60,
+                "rows_valid": 60,
+                "rows_invalid": 0,
+                "inserted": 10
+            },
+            "duplicate_summary": {
+                "total": 55,
+                "batch": 55,
+                "existing_ledger": 0
+            },
+            "duplicates_preview": {
+                "returned": 50,
+                "truncated": true,
+                "rows": []
+            }
+        });
+
+        let rendered = render_import_run(&payload);
+        assert!(rendered.is_ok());
+        if let Ok(text) = rendered {
+            assert!(text.contains(
+                "Duplicates Preview (showing first 50 of 55 duplicate rows; truncated):"
+            ));
         }
     }
 }

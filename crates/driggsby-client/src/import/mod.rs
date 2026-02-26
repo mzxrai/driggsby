@@ -14,8 +14,9 @@ use std::path::PathBuf;
 use rusqlite::TransactionBehavior;
 
 use crate::contracts::types::{
-    ImportCreateSummary, ImportDriftWarning, ImportDuplicateRow, ImportDuplicateSummary,
-    ImportDuplicatesPreview, ImportIssue, ImportKeyInventory, ImportSignProfile, ImportWarning,
+    ImportAction, ImportCreateSummary, ImportDriftWarning, ImportDuplicateRow,
+    ImportDuplicateSummary, ImportDuplicatesPreview, ImportIssue, ImportKeyInventory,
+    ImportNextStep, ImportSignProfile, ImportWarning,
 };
 use crate::setup::SetupContext;
 use crate::state::open_connection;
@@ -38,11 +39,12 @@ pub(crate) struct CanonicalTransaction {
 pub(crate) struct ImportExecutionResult {
     pub dry_run: bool,
     pub import_id: Option<String>,
-    pub undo_id: Option<String>,
     pub message: String,
     pub summary: ImportCreateSummary,
     pub duplicate_summary: ImportDuplicateSummary,
     pub duplicates_preview: ImportDuplicatesPreview,
+    pub next_step: ImportNextStep,
+    pub other_actions: Vec<ImportAction>,
     pub issues: Vec<ImportIssue>,
     pub source_used: Option<String>,
     pub source_ignored: Option<String>,
@@ -93,6 +95,12 @@ pub(crate) fn execute(
             ledger_deduped.duplicate_rows.len() as i64,
         );
         let duplicates_preview = build_duplicates_preview(&duplicate_rows);
+        let (next_step, other_actions) = build_next_actions(
+            true,
+            None,
+            duplicate_summary.total,
+            Some(resolved_source.source_kind.as_str()),
+        );
         let message = if resolved_source.source_ignored.is_some() {
             "Validation passed. No rows were written. File input was used and stdin was ignored."
                 .to_string()
@@ -103,11 +111,12 @@ pub(crate) fn execute(
         return Ok(ImportExecutionResult {
             dry_run: true,
             import_id: None,
-            undo_id: None,
             message,
             summary,
             duplicate_summary,
             duplicates_preview,
+            next_step,
+            other_actions,
             issues: Vec::new(),
             source_used: resolved_source.source_used,
             source_ignored: resolved_source.source_ignored,
@@ -150,6 +159,12 @@ pub(crate) fn execute(
         existing_deduped.duplicate_rows.len() as i64,
     );
     let duplicates_preview = build_duplicates_preview(&persisted.duplicate_rows);
+    let (next_step, other_actions) = build_next_actions(
+        false,
+        Some(&persisted.import_id),
+        duplicate_summary.total,
+        Some(resolved_source.source_kind.as_str()),
+    );
 
     let message = if resolved_source.source_ignored.is_some() {
         "Import completed successfully. File input was used and stdin was ignored.".to_string()
@@ -160,11 +175,12 @@ pub(crate) fn execute(
     Ok(ImportExecutionResult {
         dry_run: false,
         import_id: Some(persisted.import_id.clone()),
-        undo_id: Some(persisted.undo_id),
         message,
         summary,
         duplicate_summary,
         duplicates_preview,
+        next_step,
+        other_actions,
         issues: Vec::new(),
         source_used: resolved_source.source_used,
         source_ignored: resolved_source.source_ignored,
@@ -243,4 +259,57 @@ pub(crate) fn invalid_input_error(message: &str) -> ClientError {
         ],
     )
     .with_import_help()
+}
+
+fn build_next_actions(
+    dry_run: bool,
+    import_id: Option<&str>,
+    duplicate_total: i64,
+    source_kind: Option<&str>,
+) -> (ImportNextStep, Vec<ImportAction>) {
+    if dry_run {
+        let dry_run_command = match source_kind {
+            Some("stdin") => "driggsby import create",
+            _ => "driggsby import create <path>",
+        };
+        return (
+            ImportNextStep {
+                label: "Commit this import".to_string(),
+                command: dry_run_command.to_string(),
+            },
+            Vec::new(),
+        );
+    }
+
+    let mut other_actions = vec![ImportAction {
+        label: "View import list".to_string(),
+        command: "driggsby import list".to_string(),
+        risk: None,
+    }];
+
+    if duplicate_total > 0
+        && let Some(id) = import_id
+    {
+        other_actions.push(ImportAction {
+            label: "View duplicates".to_string(),
+            command: format!("driggsby import duplicates {id}"),
+            risk: None,
+        });
+    }
+
+    if let Some(id) = import_id {
+        other_actions.push(ImportAction {
+            label: "Undo this import (destructive)".to_string(),
+            command: format!("driggsby import undo {id}"),
+            risk: Some("destructive".to_string()),
+        });
+    }
+
+    (
+        ImportNextStep {
+            label: "Connect and query your data".to_string(),
+            command: "driggsby schema".to_string(),
+        },
+        other_actions,
+    )
 }

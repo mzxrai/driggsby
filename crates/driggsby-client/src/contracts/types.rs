@@ -48,12 +48,12 @@ pub struct ImportData {
     pub path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub import_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub undo_id: Option<String>,
     pub message: String,
     pub summary: ImportCreateSummary,
     pub duplicate_summary: ImportDuplicateSummary,
     pub duplicates_preview: ImportDuplicatesPreview,
+    pub next_step: ImportNextStep,
+    pub other_actions: Vec<ImportAction>,
     pub issues: Vec<ImportIssue>,
     pub source_used: Option<String>,
     pub source_ignored: Option<String>,
@@ -66,6 +66,20 @@ pub struct ImportData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drift_warnings: Option<Vec<ImportDriftWarning>>,
     pub query_context: QueryContext,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportNextStep {
+    pub label: String,
+    pub command: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportAction {
+    pub label: String,
+    pub command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub risk: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

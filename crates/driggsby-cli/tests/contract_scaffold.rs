@@ -261,11 +261,15 @@ fn import_dry_run_default_is_plaintext_summary() {
     assert!(body.contains("Per-account sign profile:"));
     assert!(body.contains("Drift warnings:"));
     assert!(body.contains("No rows were written because this was a dry run."));
+    assert!(body.contains("Next step:"));
+    assert!(body.contains("driggsby import create <path>"));
+    assert!(body.contains("Other actions:"));
+    assert!(!body.contains("driggsby import undo"));
     assert!(!body.contains("\"ok\""));
 }
 
 #[test]
-fn import_plaintext_success_shows_import_and_undo_ids() {
+fn import_plaintext_success_shows_import_id_and_safe_actions() {
     let home = unique_test_home();
     let source_path = write_source_file(
         &home,
@@ -279,10 +283,16 @@ fn import_plaintext_success_shows_import_and_undo_ids() {
     assert!(ok);
     assert!(body.starts_with("Import completed successfully."));
     assert!(body.contains("Import ID:"));
-    assert!(body.contains("Undo ID:"));
+    assert!(!body.contains("Undo ID:"));
     assert!(body.contains("Summary:"));
     assert!(body.contains("Duplicate Summary:"));
     assert!(body.contains("Duplicates Preview"));
+    assert!(body.contains("Next step:"));
+    assert!(body.contains("driggsby schema"));
+    assert!(body.contains("Other actions:"));
+    assert!(body.contains("driggsby import list"));
+    assert!(body.contains("driggsby import undo"));
+    assert!(body.contains("(destructive)"));
     assert!(!body.contains("Deduped:"));
     assert!(!body.contains("\"ok\""));
 }
@@ -305,7 +315,23 @@ fn import_json_success_uses_structured_envelope_without_command_field() {
     assert_eq!(payload["ok"], Value::Bool(true));
     assert_eq!(payload["version"], Value::String("v1".to_string()));
     assert!(payload["data"]["import_id"].is_string());
-    assert!(payload["data"]["undo_id"].is_string());
+    assert!(payload["data"].get("undo_id").is_none());
+    assert_eq!(
+        payload["data"]["next_step"]["command"],
+        Value::String("driggsby schema".to_string())
+    );
+    assert!(payload["data"]["next_step"]["label"].is_string());
+    assert!(payload["data"]["other_actions"].is_array());
+    let other_actions = payload["data"]["other_actions"].as_array();
+    assert!(other_actions.is_some());
+    if let Some(actions) = other_actions {
+        assert_eq!(actions.len(), 2);
+        assert_eq!(
+            actions[0]["command"],
+            Value::String("driggsby import list".to_string())
+        );
+        assert_eq!(actions[1]["risk"], Value::String("destructive".to_string()));
+    }
     assert!(payload["data"]["summary"].is_object());
     assert!(payload["data"]["issues"].is_array());
     assert!(payload["data"]["query_context"].is_object());
