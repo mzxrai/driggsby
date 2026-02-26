@@ -557,7 +557,7 @@ fn dedupe_counts_batch_and_existing_rows() {
 }
 
 #[test]
-fn json_import_missing_statement_id_fails_validation() {
+fn json_import_missing_statement_id_is_null_and_dedupes_across_imports() {
     let temp = temp_home();
     assert!(temp.is_ok());
     if let Ok((_temp, home)) = temp {
@@ -571,25 +571,190 @@ fn json_import_missing_statement_id_fails_validation() {
 ]"#,
         );
 
-        let result = run_import(&home, Some(&source_path), true, None);
-        assert!(result.is_err());
-        if let Err(error) = result {
-            assert_eq!(error.code, "import_validation_failed");
-            let envelope = failure_from_error(&error);
-            let as_json = serde_json::to_value(envelope);
-            assert!(as_json.is_ok());
-            if let Ok(value) = as_json {
-                assert!(value.get("data").is_none());
+        let first_result = run_import(&home, Some(&source_path), false, None);
+        assert!(first_result.is_ok());
+
+        if let Ok(success) = first_result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                assert_eq!(value["data"]["summary"]["inserted"], Value::from(1));
+                assert_eq!(value["data"]["duplicate_summary"]["total"], Value::from(0));
+            }
+        }
+
+        let db_path = home.join("ledger.db");
+        let stored_statement_id = query_optional_string(
+            &db_path,
+            "SELECT statement_id FROM internal_transactions WHERE description = 'MISSING-STATEMENT' LIMIT 1",
+        );
+        assert!(stored_statement_id.is_none());
+
+        let second_result = run_import(&home, Some(&source_path), false, None);
+        assert!(second_result.is_ok());
+        if let Ok(success) = second_result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                assert_eq!(value["data"]["summary"]["inserted"], Value::from(0));
+                assert_eq!(value["data"]["duplicate_summary"]["total"], Value::from(1));
                 assert_eq!(
-                    value["error"]["data"]["issues"][0]["field"],
-                    Value::String("statement_id".to_string())
-                );
-                assert_eq!(
-                    value["error"]["data"]["issues"][0]["code"],
-                    Value::String("missing_required_field".to_string())
+                    value["data"]["duplicate_summary"]["existing_ledger"],
+                    Value::from(1)
                 );
             }
         }
+
+        assert_eq!(
+            query_count(
+                &db_path,
+                "SELECT COUNT(*) FROM internal_transactions WHERE description = 'MISSING-STATEMENT'"
+            ),
+            1
+        );
+    }
+}
+
+#[test]
+fn csv_import_missing_statement_id_is_null_and_dedupes_across_imports() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("missing-statement-id.csv");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &source_path,
+            "account_key,posted_at,amount,currency,description\nchase_checking_1234,2026-05-01,-10.00,USD,MISSING-STATEMENT-CSV\n",
+        );
+
+        let first_result = run_import(&home, Some(&source_path), false, None);
+        assert!(first_result.is_ok());
+
+        if let Ok(success) = first_result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                assert_eq!(value["data"]["summary"]["inserted"], Value::from(1));
+                assert_eq!(value["data"]["duplicate_summary"]["total"], Value::from(0));
+            }
+        }
+
+        let db_path = home.join("ledger.db");
+        let stored_statement_id = query_optional_string(
+            &db_path,
+            "SELECT statement_id FROM internal_transactions WHERE description = 'MISSING-STATEMENT-CSV' LIMIT 1",
+        );
+        assert!(stored_statement_id.is_none());
+
+        let second_result = run_import(&home, Some(&source_path), false, None);
+        assert!(second_result.is_ok());
+        if let Ok(success) = second_result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                assert_eq!(value["data"]["summary"]["inserted"], Value::from(0));
+                assert_eq!(value["data"]["duplicate_summary"]["total"], Value::from(1));
+                assert_eq!(
+                    value["data"]["duplicate_summary"]["existing_ledger"],
+                    Value::from(1)
+                );
+            }
+        }
+
+        assert_eq!(
+            query_count(
+                &db_path,
+                "SELECT COUNT(*) FROM internal_transactions WHERE description = 'MISSING-STATEMENT-CSV'"
+            ),
+            1
+        );
+    }
+}
+
+#[test]
+fn dry_run_missing_statement_id_returns_null_statement_in_duplicate_preview() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("missing-statement-id-dry-run.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &source_path,
+            r#"[
+  {"account_key":"chase_checking_1234","posted_at":"2026-05-01","amount":-10.00,"currency":"USD","description":"MISSING-STATEMENT-DRYRUN"}
+]"#,
+        );
+
+        let first_commit = run_import(&home, Some(&source_path), false, None);
+        assert!(first_commit.is_ok());
+
+        let dry_run_one = run_import(&home, Some(&source_path), true, None);
+        let dry_run_two = run_import(&home, Some(&source_path), true, None);
+        assert!(dry_run_one.is_ok());
+        assert!(dry_run_two.is_ok());
+
+        let mut statement_one = None;
+        let mut statement_two = None;
+
+        if let Ok(success) = dry_run_one {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                statement_one = value["data"]["duplicates_preview"]["rows"]
+                    .as_array()
+                    .and_then(|rows| rows.first())
+                    .and_then(|row| row.get("statement_id"))
+                    .and_then(Value::as_str)
+                    .map(std::string::ToString::to_string);
+            }
+        }
+
+        if let Ok(success) = dry_run_two {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                statement_two = value["data"]["duplicates_preview"]["rows"]
+                    .as_array()
+                    .and_then(|rows| rows.first())
+                    .and_then(|row| row.get("statement_id"))
+                    .and_then(Value::as_str)
+                    .map(std::string::ToString::to_string);
+            }
+        }
+
+        assert_eq!(statement_one, None);
+        assert_eq!(statement_two, None);
+    }
+}
+
+#[test]
+fn explicit_statement_id_with_internal_prefix_is_preserved() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("explicit-prefix-statement-id.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &source_path,
+            r#"[
+  {"statement_id":"gen_pending_import_manualscope","account_key":"chase_checking_1234","posted_at":"2026-05-01","amount":-10.00,"currency":"USD","description":"EXPLICIT-PREFIX"}
+]"#,
+        );
+
+        let result = run_import(&home, Some(&source_path), false, None);
+        assert!(result.is_ok());
+
+        let db_path = home.join("ledger.db");
+        assert_eq!(
+            query_optional_string(
+                &db_path,
+                "SELECT statement_id FROM internal_transactions WHERE description = 'EXPLICIT-PREFIX' LIMIT 1"
+            ),
+            Some("gen_pending_import_manualscope".to_string())
+        );
     }
 }
 
@@ -1370,6 +1535,104 @@ fn duplicates_report_live_and_historical_match_pointers_after_promotion() {
                     assert_eq!(
                         value["data"]["rows"][0]["matched_import_id_at_dedupe"],
                         Value::String(first_import_id.unwrap_or_default())
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn duplicates_fallback_resolves_null_statement_id_using_dedupe_scope() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let winner_path = home.join("winner-null-statement-fallback.json");
+        let candidate_path = home.join("candidate-null-statement-fallback.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+
+        write_file(
+            &winner_path,
+            r#"[
+  {"account_key":"acct_live_2","posted_at":"2026-12-10","amount":-19.00,"currency":"USD","description":"NULL-STMT-FALLBACK"}
+]"#,
+        );
+        write_file(
+            &candidate_path,
+            r#"[
+  {"account_key":"acct_live_2","posted_at":"2026-12-10","amount":-19.00,"currency":"USD","description":"NULL-STMT-FALLBACK"}
+]"#,
+        );
+
+        let first_result = run_import(&home, Some(&winner_path), false, None);
+        assert!(first_result.is_ok());
+        let second_result = run_import(&home, Some(&candidate_path), false, None);
+        assert!(second_result.is_ok());
+
+        let mut first_import_id = None;
+        let mut second_import_id = None;
+        if let Ok(success) = first_result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                first_import_id = extract_import_id(&value);
+            }
+        }
+        if let Ok(success) = second_result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                second_import_id = extract_import_id(&value);
+            }
+        }
+
+        assert!(first_import_id.is_some());
+        assert!(second_import_id.is_some());
+
+        let db_path = home.join("ledger.db");
+        let first_live_txn_id = query_optional_string(
+            &db_path,
+            "SELECT txn_id
+             FROM internal_transactions
+             WHERE description = 'NULL-STMT-FALLBACK'
+             ORDER BY txn_id ASC
+             LIMIT 1",
+        );
+        assert!(first_live_txn_id.is_some());
+
+        if let Some(second_id) = second_import_id.as_deref() {
+            let rewired = execute_sql(
+                &db_path,
+                &format!(
+                    "UPDATE internal_transaction_dedupe_candidates
+                     SET matched_txn_id = 'txn_missing',
+                         matched_import_id = 'imp_missing',
+                         promoted_txn_id = NULL
+                     WHERE import_id = '{second_id}'"
+                ),
+            );
+            assert!(rewired);
+
+            let duplicates = run_import_duplicates(&home, second_id);
+            assert!(duplicates.is_ok());
+            if let Ok(success) = duplicates {
+                let payload = serde_json::to_value(success);
+                assert!(payload.is_ok());
+                if let Ok(value) = payload {
+                    assert_eq!(value["data"]["total"], Value::from(1));
+                    assert!(value["data"]["rows"][0]["statement_id"].is_null());
+                    assert_eq!(
+                        value["data"]["rows"][0]["matched_txn_id"],
+                        Value::String(first_live_txn_id.unwrap_or_default())
+                    );
+                    assert_eq!(
+                        value["data"]["rows"][0]["matched_import_id"],
+                        Value::String(first_import_id.unwrap_or_default())
+                    );
+                    assert_eq!(
+                        value["data"]["rows"][0]["matched_txn_id_at_dedupe"],
+                        Value::String("txn_missing".to_string())
                     );
                 }
             }

@@ -232,7 +232,7 @@ pub fn duplicates_with_options(
                          AND t.amount = c.amount
                          AND t.currency = c.currency
                          AND t.description = c.description
-                         AND t.statement_id != c.statement_id)
+                         AND t.dedupe_scope_id != c.dedupe_scope_id)
                       )
                     ORDER BY t.txn_id ASC
                     LIMIT 1
@@ -247,7 +247,7 @@ pub fn duplicates_with_options(
             Ok(ImportDuplicateRow {
                 source_row_index: row.get(0)?,
                 dedupe_reason: row.get(1)?,
-                statement_id: row.get(2)?,
+                statement_id: row.get::<_, Option<String>>(2)?,
                 account_key: row.get(3)?,
                 posted_at: row.get(4)?,
                 amount: row.get(5)?,

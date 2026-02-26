@@ -209,7 +209,8 @@ mod tests {
     fn incoming_unique_values_collects_expected_sets() {
         let rows = [
             CanonicalTransaction {
-                statement_id: "acct_1_2026-01-31".to_string(),
+                statement_id: Some("acct_1_2026-01-31".to_string()),
+                dedupe_scope_id: "stmt|acct_1|acct_1_2026-01-31".to_string(),
                 account_key: "acct_1".to_string(),
                 posted_at: "2026-01-01".to_string(),
                 amount: -1.0,
@@ -220,7 +221,8 @@ mod tests {
                 category: Some("Food".to_string()),
             },
             CanonicalTransaction {
-                statement_id: "acct_1_2026-01-31".to_string(),
+                statement_id: Some("acct_1_2026-01-31".to_string()),
+                dedupe_scope_id: "stmt|acct_1|acct_1_2026-01-31".to_string(),
                 account_key: "acct_1".to_string(),
                 posted_at: "2026-01-02".to_string(),
                 amount: -2.0,
@@ -231,7 +233,8 @@ mod tests {
                 category: None,
             },
             CanonicalTransaction {
-                statement_id: "acct_2_2026-01-31".to_string(),
+                statement_id: Some("acct_2_2026-01-31".to_string()),
+                dedupe_scope_id: "stmt|acct_2|acct_2_2026-01-31".to_string(),
                 account_key: "acct_2".to_string(),
                 posted_at: "2026-01-03".to_string(),
                 amount: 3.0,

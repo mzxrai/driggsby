@@ -12,6 +12,7 @@ pub(crate) mod validate;
 use std::path::PathBuf;
 
 use rusqlite::TransactionBehavior;
+use ulid::Ulid;
 
 use crate::contracts::types::{
     ImportAction, ImportCreateSummary, ImportDriftWarning, ImportDuplicateRow,
@@ -24,7 +25,8 @@ use crate::{ClientError, ClientResult};
 
 #[derive(Debug, Clone)]
 pub(crate) struct CanonicalTransaction {
-    pub statement_id: String,
+    pub statement_id: Option<String>,
+    pub dedupe_scope_id: String,
     pub account_key: String,
     pub posted_at: String,
     pub amount: f64,
@@ -63,7 +65,8 @@ pub(crate) fn execute(
 ) -> ClientResult<ImportExecutionResult> {
     let resolved_source = input::resolve_source(path, stdin_override)?;
     let parsed_rows = parse::parse_source(&resolved_source.content)?;
-    let validated = validate::validate_rows(parsed_rows)?;
+    let statement_scope_id = format!("scope_{}", Ulid::new());
+    let validated = validate::validate_rows(parsed_rows, &statement_scope_id)?;
     let batch_deduped = dedupe::dedupe_batch(validated.rows);
 
     let db_path = PathBuf::from(&setup.db_path);
@@ -134,11 +137,13 @@ pub(crate) fn execute(
         batch_deduped.duplicate_rows.clone(),
         existing_deduped.duplicate_rows.clone(),
     );
+    let import_id = format!("imp_{}", Ulid::new());
 
     let persisted = persist::persist_import(
         &mut connection,
         &db_path,
         persist::PersistInput {
+            import_id: &import_id,
             candidate_rows: &existing_deduped.insertable_rows,
             rows_read: validated.summary.rows_read,
             rows_valid: validated.summary.rows_valid,

@@ -74,12 +74,12 @@ Import schema:
   JSON example (one top-level array):
   [
     {
-      \"statement_id\": \"chase_checking_1234_2026-01-31\",
       \"account_key\": \"chase_checking_1234\",
       \"posted_at\": \"2026-01-15\",
       \"amount\": -42.15,
       \"currency\": \"USD\",
       \"description\": \"WHOLE FOODS\",
+      \"statement_id\": \"chase_checking_1234_2026-01-31\",
       \"external_id\": \"txn_12345\",
       \"merchant\": \"Whole Foods\",
       \"category\": \"Groceries\"
@@ -87,58 +87,47 @@ Import schema:
   ]
 
   CSV example (header + rows):
-  statement_id,account_key,posted_at,amount,currency,description,external_id,merchant,category
-  chase_checking_1234_2026-01-31,chase_checking_1234,2026-01-15,-42.15,USD,WHOLE FOODS,txn_12345,Whole Foods,Groceries
-  chase_checking_1234_2026-01-31,chase_checking_1234,2026-01-16,42.15,USD,REFUND,txn_12346,Whole Foods,Groceries
+  account_key,posted_at,amount,currency,description,statement_id,external_id,merchant,category
+  chase_checking_1234,2026-01-15,-42.15,USD,WHOLE FOODS,chase_checking_1234_2026-01-31,txn_12345,Whole Foods,Groceries
+  chase_checking_1234,2026-01-16,42.15,USD,REFUND,chase_checking_1234_2026-01-31,txn_12346,Whole Foods,Groceries
 
 Stability rule (important):
   Keep canonical identifiers and labels exactly the same across imports.
-  This includes account_key, currency, merchant, and category.
+  This includes `account_key`, `currency`, `merchant`, and `category`.
   If these drift over time, your ledger analysis will drift too.
   Before mapping new files, run `driggsby import keys uniq` and copy those canonical values.
 
-Statement ID guidance (required):
-  Use statement_id = <account_key>_<statement_end_YYYY-MM-DD>
-  and copy that exact value to every row from that statement.
-  Do not reuse one statement_id across multiple statements.
-  Example: chase_checking_1234_2026-01-31
-
 Field rules (very explicit):
-  Signed amount rules (explicit):
-    - negative = money out (spend/charge)
-    - positive = money in (refund/payment/credit)
-
-  Credit card examples:
-    - Card charge: amount is negative
-    - Merchant refund: amount is positive
-    - Card payment credit: amount is positive
-
-  statement_id (required):
-    Statement grouping key. Every row from the same statement must share it.
-    Recommended format: <account_key>_<statement_end_YYYY-MM-DD>
-    Example: chase_checking_1234_2026-01-31
-
   account_key (required):
     A stable account name. Pick one value and keep it the same forever.
-    Example: chase_checking_1234
+    Example: `chase_checking_1234`
 
   posted_at (required):
-    Date only, exactly YYYY-MM-DD.
-    Example: 2026-01-15
+    Date only, exactly `YYYY-MM-DD`.
+    Example: `2026-01-15`
 
   amount (required):
     A number, not text.
-    Negative means money out. Positive means money in.
+    Signed amount rules (strict):
+    - negative = money out (`spend`, `card charge`)
+    - positive = money in (`refund`, `payment`, `credit`)
+    Use exactly one sign convention everywhere. Do not flip signs between imports.
     Use at most 2 decimal places.
-    Example charge: -42.15
-    Example refund/payment: 42.15
+    Example charge: `-42.15`
+    Example refund/payment: `42.15`
 
   currency (required):
     3-letter ISO code.
-    Example: USD
+    Example: `USD`
 
   description (required):
     Raw transaction text from the source.
+
+  statement_id (optional):
+    Statement grouping key when you have statement boundaries.
+    Use `statement_id` = `<account_key>_<statement_end_YYYY-MM-DD>` when available.
+    Never reuse the same `statement_id` across different imports/statements.
+    Example: `chase_checking_1234_2026-01-31`
 
   external_id (optional):
     Upstream transaction ID if your bank/export provides one.

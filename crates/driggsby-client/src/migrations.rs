@@ -8,6 +8,8 @@ const ADD_TRANSACTION_DEDUPE_CANDIDATES_SQL: &str =
     include_str!("migrations/0002_add_transaction_dedupe_candidates.sql");
 const ADD_STATEMENT_ID_AND_DUPLICATE_METADATA_SQL: &str =
     include_str!("migrations/0003_add_statement_id_and_duplicate_metadata.sql");
+const ADD_INTERNAL_DEDUPE_SCOPE_ID_SQL: &str =
+    include_str!("migrations/0004_internal_dedupe_scope_id.sql");
 
 pub const REQUIRED_VIEW_NAMES: [&str; 5] = [
     "v1_transactions",
@@ -38,6 +40,7 @@ pub fn run_pending(conn: &mut Connection) -> rusqlite_migration::Result<()> {
         M::up(BOOTSTRAP_SQL),
         M::up(ADD_TRANSACTION_DEDUPE_CANDIDATES_SQL),
         M::up(ADD_STATEMENT_ID_AND_DUPLICATE_METADATA_SQL),
+        M::up(ADD_INTERNAL_DEDUPE_SCOPE_ID_SQL),
     ]);
     migrations.to_latest(conn)
 }

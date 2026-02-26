@@ -90,7 +90,7 @@ pub(crate) fn dedupe_batch(rows: Vec<CanonicalTransaction>) -> BatchDedupeResult
         let seen_entries = fallback_seen.entry(key).or_default();
         let matched_batch_row_index = seen_entries
             .iter()
-            .find(|(statement_id, _)| statement_id != &row.statement_id)
+            .find(|(scope_id, _)| scope_id != &row.dedupe_scope_id)
             .map(|(_, matched_index)| *matched_index);
 
         if let Some(matched_index) = matched_batch_row_index {
@@ -105,7 +105,7 @@ pub(crate) fn dedupe_batch(rows: Vec<CanonicalTransaction>) -> BatchDedupeResult
             continue;
         }
 
-        seen_entries.push((row.statement_id.clone(), source_row_index));
+        seen_entries.push((row.dedupe_scope_id.clone(), source_row_index));
         candidate_rows.push(BatchRow {
             row,
             source_row_index,
@@ -193,7 +193,7 @@ pub(crate) fn find_existing_match(
                AND amount = ?3
                AND currency = ?4
                AND description = ?5
-               AND statement_id != ?6
+               AND dedupe_scope_id != ?6
              ORDER BY txn_id ASC
              LIMIT 1",
             params![
@@ -202,7 +202,7 @@ pub(crate) fn find_existing_match(
                 row.amount,
                 &row.currency,
                 &row.description,
-                &row.statement_id
+                &row.dedupe_scope_id
             ],
             |result| {
                 Ok(LedgerMatch {
