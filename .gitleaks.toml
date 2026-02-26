@@ -5,9 +5,6 @@ useDefault = true
 
 [allowlist]
 description = "Project-wide allowlist for known-safe placeholders"
-paths = [
-  '''(?i)(^|/)\.env\.(example|sample|template)$''',
-]
 regexes = [
   '''(?i)\bexample(_|-)?(key|token|secret)\b''',
 ]
@@ -32,6 +29,22 @@ entropy = 0.0
 id = "forbidden-local-database-dump-file"
 description = "Block committing local database and dump files"
 path = '''(?i)(^|/).*\.(sqlite|sqlite3|db|dump|bak)$'''
+regex = '''.+'''
+secretGroup = 0
+entropy = 0.0
+
+[[rules]]
+id = "forbidden-local-document-export-file"
+description = "Block committing high-risk local document/export file types"
+path = '''(?i)(^|/).*\.(csv|tsv|pdf|xls|xlsx|doc|docx|rtf|numbers)$'''
+regex = '''.+'''
+secretGroup = 0
+entropy = 0.0
+
+[[rules]]
+id = "forbidden-local-json-export-file"
+description = "Block committing JSON exports in high-risk local data directories"
+path = '''(?i)(^|/)(exports?|reports?|backups?|statements?|data)/.*\.(json|ndjson)$'''
 regex = '''.+'''
 secretGroup = 0
 entropy = 0.0

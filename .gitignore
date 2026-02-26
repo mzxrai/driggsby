@@ -32,6 +32,17 @@ id_ed25519
 *.db
 *.dump
 *.bak
+*.csv
+*.tsv
+*.pdf
+*.xls
+*.xlsx
+*.doc
+*.docx
+*.rtf
+*.numbers
+*.ndjson
+/exports/
 
 # macOS
 .DS_Store
