@@ -11,7 +11,7 @@ regexes = [
 
 [[rules]]
 id = "forbidden-env-file"
-description = "Block committing runtime env files (except explicit templates)"
+description = "Block committing env files"
 path = '''(?i)(^|/)\.env($|\.[^/]+$)'''
 regex = '''.+'''
 secretGroup = 0
