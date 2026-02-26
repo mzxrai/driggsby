@@ -33,6 +33,22 @@ CREATE TABLE IF NOT EXISTS internal_transactions (
     category TEXT
 );
 
+CREATE TABLE IF NOT EXISTS internal_accounts (
+    account_key TEXT PRIMARY KEY,
+    account_type TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS internal_import_account_stats (
+    import_id TEXT NOT NULL,
+    account_key TEXT NOT NULL,
+    rows_read INTEGER NOT NULL DEFAULT 0,
+    inserted INTEGER NOT NULL DEFAULT 0,
+    deduped INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (import_id, account_key)
+);
+
 CREATE TABLE IF NOT EXISTS internal_transaction_dedupe_candidates (
     candidate_id TEXT PRIMARY KEY,
     import_id TEXT NOT NULL,
@@ -75,30 +91,35 @@ INSERT OR IGNORE INTO internal_meta (key, value) VALUES ('import_contract_versio
 -- driggsby:safe_repair:start:v1_transactions
 CREATE VIEW v1_transactions AS
 SELECT
-    txn_id,
-    import_id,
-    statement_id,
-    account_key,
-    posted_at,
-    amount,
-    currency,
-    description,
-    external_id,
-    merchant,
-    category
-FROM internal_transactions;
+    t.txn_id,
+    t.import_id,
+    t.statement_id,
+    t.account_key,
+    a.account_type,
+    t.posted_at,
+    t.amount,
+    t.currency,
+    t.description,
+    t.external_id,
+    t.merchant,
+    t.category
+FROM internal_transactions t
+LEFT JOIN internal_accounts a ON a.account_key = t.account_key;
 -- driggsby:safe_repair:end:v1_transactions
 
 -- driggsby:safe_repair:start:v1_accounts
 CREATE VIEW v1_accounts AS
 SELECT
-    account_key,
-    currency,
-    MIN(posted_at) AS first_posted_at,
-    MAX(posted_at) AS last_posted_at,
-    COUNT(*) AS txn_count
-FROM internal_transactions
-GROUP BY account_key, currency;
+    t.account_key,
+    a.account_type,
+    t.currency,
+    MIN(t.posted_at) AS first_posted_at,
+    MAX(t.posted_at) AS last_posted_at,
+    COUNT(*) AS txn_count,
+    ROUND(SUM(t.amount), 2) AS net_amount
+FROM internal_transactions t
+LEFT JOIN internal_accounts a ON a.account_key = t.account_key
+GROUP BY t.account_key, a.account_type, t.currency;
 -- driggsby:safe_repair:end:v1_accounts
 
 -- driggsby:safe_repair:start:v1_imports
@@ -171,3 +192,13 @@ ON internal_transaction_dedupe_candidates(dedupe_key, promoted_txn_id, source_ro
 CREATE INDEX idx_internal_transaction_dedupe_candidates_import_id
 ON internal_transaction_dedupe_candidates(import_id);
 -- driggsby:safe_repair:end:idx_internal_transaction_dedupe_candidates_import_id
+
+-- driggsby:safe_repair:start:idx_internal_import_account_stats_import_id
+CREATE INDEX idx_internal_import_account_stats_import_id
+ON internal_import_account_stats(import_id);
+-- driggsby:safe_repair:end:idx_internal_import_account_stats_import_id
+
+-- driggsby:safe_repair:start:idx_internal_import_account_stats_account_key
+CREATE INDEX idx_internal_import_account_stats_account_key
+ON internal_import_account_stats(account_key);
+-- driggsby:safe_repair:end:idx_internal_import_account_stats_account_key

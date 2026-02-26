@@ -10,6 +10,7 @@ pub(crate) struct ValidatedRows {
     pub(crate) rows: Vec<CanonicalTransaction>,
     pub(crate) summary: ImportSummary,
     pub(crate) statement_id_rows: HashMap<(String, String), Vec<i64>>,
+    pub(crate) account_type_rows: HashMap<(String, String), Vec<i64>>,
 }
 
 pub(crate) fn validate_rows(
@@ -20,6 +21,8 @@ pub(crate) fn validate_rows(
     let mut rows = Vec::new();
     let mut issues = Vec::new();
     let mut statement_id_rows: HashMap<(String, String), Vec<i64>> = HashMap::new();
+    let mut account_type_rows: HashMap<(String, String), Vec<i64>> = HashMap::new();
+    let mut account_type_by_account: HashMap<String, String> = HashMap::new();
 
     for raw in parsed_rows {
         let mut row_issues = Vec::new();
@@ -37,6 +40,7 @@ pub(crate) fn validate_rows(
             statement_id.as_deref(),
             statement_scope_id,
         );
+        let account_type = validate_account_type(raw.row, raw.account_type, &mut row_issues);
         let posted_at = validate_posted_at(raw.row, raw.posted_at, &mut row_issues);
         let amount = validate_amount(raw.row, raw.amount, &mut row_issues);
         let currency = validate_currency(raw.row, raw.currency, &mut row_issues);
@@ -52,6 +56,29 @@ pub(crate) fn validate_rows(
         let category = normalize_optional(raw.category);
 
         if row_issues.is_empty() {
+            if let (Some(account_key_value), Some(account_type_value)) =
+                (account_key.as_ref(), account_type.as_ref())
+            {
+                if let Some(existing_type) = account_type_by_account.get(account_key_value) {
+                    if existing_type != account_type_value {
+                        issues.push(ImportIssue {
+                            row: raw.row,
+                            field: "account_type".to_string(),
+                            code: "account_type_conflict_in_import".to_string(),
+                            description: format!(
+                                "account_key `{account_key_value}` has conflicting account_type values in this import: `{existing_type}` vs `{account_type_value}`."
+                            ),
+                            expected: Some(existing_type.to_string()),
+                            received: Some(account_type_value.to_string()),
+                        });
+                        continue;
+                    }
+                } else {
+                    account_type_by_account
+                        .insert(account_key_value.clone(), account_type_value.clone());
+                }
+            }
+
             if let (Some(account_key_value), Some(statement_id_value)) =
                 (account_key.as_ref(), statement_id.as_ref())
             {
@@ -60,10 +87,19 @@ pub(crate) fn validate_rows(
                     .or_default()
                     .push(raw.row);
             }
+            if let (Some(account_key_value), Some(account_type_value)) =
+                (account_key.as_ref(), account_type.as_ref())
+            {
+                account_type_rows
+                    .entry((account_key_value.clone(), account_type_value.clone()))
+                    .or_default()
+                    .push(raw.row);
+            }
             rows.push(CanonicalTransaction {
                 statement_id,
                 dedupe_scope_id: dedupe_scope_id.unwrap_or_default(),
                 account_key: account_key.unwrap_or_default(),
+                account_type,
                 posted_at: posted_at.unwrap_or_default(),
                 amount: amount.unwrap_or_default(),
                 currency: currency.unwrap_or_default(),
@@ -97,6 +133,7 @@ pub(crate) fn validate_rows(
         rows,
         summary,
         statement_id_rows,
+        account_type_rows,
     })
 }
 
@@ -303,6 +340,123 @@ fn validate_currency(
         return None;
     };
     Some(candidate.to_uppercase())
+}
+
+fn validate_account_type(
+    row: i64,
+    value: Option<String>,
+    issues: &mut Vec<ImportIssue>,
+) -> Option<String> {
+    let normalized = normalize_optional(value);
+    let candidate = normalized?;
+
+    let canonical = canonical_account_type(&candidate);
+    if let Some(value) = canonical {
+        return Some(value);
+    }
+
+    issues.push(ImportIssue {
+        row,
+        field: "account_type".to_string(),
+        code: "invalid_account_type".to_string(),
+        description: format!(
+            "account_type `{candidate}` is not recognized. Use one of: checking, savings, credit_card, loan, brokerage, retirement, hsa, other. Common aliases (for example `retirement_401k`, `401k_retirement`, `credit-card`, `investment_taxable`) are accepted."
+        ),
+        expected: Some(
+            "checking|savings|credit_card|loan|brokerage|retirement|hsa|other".to_string(),
+        ),
+        received: Some(candidate),
+    });
+    None
+}
+
+fn canonical_account_type(value: &str) -> Option<String> {
+    let normalized = normalize_account_type_key(value);
+    let canonical = match normalized.as_str() {
+        "checking" => "checking",
+        "savings" => "savings",
+        "credit_card" | "credit" | "creditcard" | "card" => "credit_card",
+        "loan" => "loan",
+        "brokerage" | "investment" | "taxable" => "brokerage",
+        "retirement" | "401k" | "ira" | "roth" => "retirement",
+        "hsa" => "hsa",
+        "other" => "other",
+        _ => {
+            let tokens = normalized
+                .split('_')
+                .filter(|token| !token.is_empty())
+                .collect::<Vec<&str>>();
+            if tokens.is_empty() {
+                return None;
+            }
+
+            if tokens.contains(&"checking") {
+                "checking"
+            } else if tokens.contains(&"savings") {
+                "savings"
+            } else if has_credit_card_tokens(&tokens) {
+                "credit_card"
+            } else if has_retirement_tokens(&tokens) {
+                "retirement"
+            } else if has_brokerage_tokens(&tokens) {
+                "brokerage"
+            } else if has_loan_tokens(&tokens) {
+                "loan"
+            } else if tokens.contains(&"hsa") {
+                "hsa"
+            } else if tokens.contains(&"other") {
+                "other"
+            } else {
+                return None;
+            }
+        }
+    };
+    Some(canonical.to_string())
+}
+
+fn normalize_account_type_key(value: &str) -> String {
+    let mut normalized = String::new();
+    let mut previous_was_separator = false;
+    for character in value.trim().to_lowercase().chars() {
+        if character.is_ascii_alphanumeric() {
+            normalized.push(character);
+            previous_was_separator = false;
+        } else if !previous_was_separator {
+            normalized.push('_');
+            previous_was_separator = true;
+        }
+    }
+    normalized.trim_matches('_').to_string()
+}
+
+fn has_credit_card_tokens(tokens: &[&str]) -> bool {
+    if tokens.contains(&"creditcard") {
+        return true;
+    }
+    let has_credit = tokens.contains(&"credit");
+    let has_card = tokens.contains(&"card");
+    has_credit && has_card
+}
+
+fn has_retirement_tokens(tokens: &[&str]) -> bool {
+    tokens
+        .iter()
+        .any(|token| matches!(*token, "retirement" | "401k" | "ira" | "roth" | "pension"))
+}
+
+fn has_brokerage_tokens(tokens: &[&str]) -> bool {
+    tokens.iter().any(|token| {
+        matches!(
+            *token,
+            "brokerage" | "investment" | "investments" | "taxable" | "broker"
+        )
+    })
+}
+
+fn has_loan_tokens(tokens: &[&str]) -> bool {
+    tokens
+        .iter()
+        .any(|token| matches!(*token, "loan" | "mortgage" | "studentloan" | "auto"))
 }
 
 fn normalize_optional(value: Option<String>) -> Option<String> {

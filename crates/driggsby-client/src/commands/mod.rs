@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod anomalies;
 pub(crate) mod common;
 pub mod dash;

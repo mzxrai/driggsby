@@ -1,10 +1,15 @@
 use driggsby_client::commands;
 use driggsby_client::{ClientResult, SuccessEnvelope};
 
-use crate::cli::{Cli, Commands, DemoCommand, ImportCommand, ImportKeysCommand, SchemaCommand};
+use crate::cli::{
+    AccountCommand, Cli, Commands, DemoCommand, ImportCommand, ImportKeysCommand, SchemaCommand,
+};
 
 pub fn dispatch(cli: &Cli) -> ClientResult<SuccessEnvelope> {
     match &cli.command {
+        Commands::Account { command } => match command {
+            AccountCommand::List { .. } => commands::accounts::run(),
+        },
         Commands::Schema { command } => match command {
             Some(SchemaCommand::View { view_name }) => commands::schema::view(view_name),
             None => commands::schema::summary(),
@@ -58,9 +63,10 @@ mod tests {
 
     #[test]
     fn dispatches_to_expected_command_names() {
-        let cases: [(&[&str], &str); 2] = [
+        let cases: [(&[&str], &str); 3] = [
             (&["driggsby", "demo", "dash"], "demo"),
             (&["driggsby", "schema"], "schema"),
+            (&["driggsby", "account", "list"], "account list"),
         ];
 
         for (args, expected_command) in cases {

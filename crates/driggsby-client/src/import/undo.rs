@@ -53,6 +53,7 @@ pub(crate) fn undo_import(
         return Err(ClientError::ledger_corrupt(db_path));
     }
 
+    let touched_account_keys = touched_account_keys_for_import(&transaction, db_path, import_id)?;
     let touched_key_counts = touched_key_counts_for_import(&transaction, db_path, import_id)?;
     let rows_reverted = transaction
         .execute(
@@ -100,6 +101,8 @@ pub(crate) fn undo_import(
         }
     }
 
+    reconcile_account_metadata_for_undo(&transaction, db_path, &touched_account_keys)?;
+
     transaction
         .commit()
         .map_err(|error| map_sqlite_error(db_path, &error))?;
@@ -109,6 +112,61 @@ pub(crate) fn undo_import(
         rows_reverted,
         rows_promoted,
     })
+}
+
+fn touched_account_keys_for_import(
+    transaction: &rusqlite::Transaction<'_>,
+    db_path: &Path,
+    import_id: &str,
+) -> ClientResult<Vec<String>> {
+    let mut statement = transaction
+        .prepare(
+            "SELECT DISTINCT account_key
+             FROM internal_import_account_stats
+             WHERE import_id = ?1
+               AND account_key IS NOT NULL
+               AND TRIM(account_key) <> ''
+             ORDER BY account_key ASC",
+        )
+        .map_err(|error| map_sqlite_error(db_path, &error))?;
+
+    let rows = statement
+        .query_map(params![import_id], |row| row.get::<_, String>(0))
+        .map_err(|error| map_sqlite_error(db_path, &error))?;
+
+    let mut account_keys = Vec::new();
+    for row in rows {
+        account_keys.push(row.map_err(|error| map_sqlite_error(db_path, &error))?);
+    }
+
+    Ok(account_keys)
+}
+
+fn reconcile_account_metadata_for_undo(
+    transaction: &rusqlite::Transaction<'_>,
+    db_path: &Path,
+    account_keys: &[String],
+) -> ClientResult<()> {
+    for account_key in account_keys {
+        let remaining_count = transaction
+            .query_row(
+                "SELECT COUNT(*) FROM internal_transactions WHERE account_key = ?1",
+                params![account_key],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|error| map_sqlite_error(db_path, &error))?;
+
+        if remaining_count == 0 {
+            transaction
+                .execute(
+                    "DELETE FROM internal_accounts WHERE account_key = ?1",
+                    params![account_key],
+                )
+                .map_err(|error| map_sqlite_error(db_path, &error))?;
+        }
+    }
+
+    Ok(())
 }
 
 fn touched_key_counts_for_import(
@@ -130,6 +188,7 @@ fn touched_key_counts_for_import(
                 statement_id: row.get::<_, Option<String>>(0)?,
                 dedupe_scope_id: row.get(1)?,
                 account_key: row.get(2)?,
+                account_type: None,
                 posted_at: row.get(3)?,
                 amount: row.get(4)?,
                 currency: row.get(5)?,
@@ -193,6 +252,7 @@ fn candidates_for_key(
                     statement_id: row.get::<_, Option<String>>(2)?,
                     dedupe_scope_id: row.get(3)?,
                     account_key: row.get(4)?,
+                    account_type: None,
                     posted_at: row.get(5)?,
                     amount: row.get(6)?,
                     currency: row.get(7)?,

@@ -63,7 +63,7 @@ When instructed to execute a specified plan, or implement a feature or task, fol
 7. Run any sanity/smoke checks helpful to ensure the feature "truly does work," not just passes automated tests. In some cases, this may include designing a small "lab test" scenario representing real-world use. Goal: perform testing similar to the manual punch-button testing that a human user might perform.
 8. Run the "closeout procedure": update the plan file, marking off all completed checkboxes. Once the full plan file is complete, add an "executive summary" section at the bottom (format for exec. summary only: list items; no checkboxes needed), with a description of (a) the key points of what was done, (b) key decisions made, including basic justification for each, (c) any information or tips helpful for the next agent that works on the project, including any unaddressed concerns, gotchas, or issues the agent should know about.
 9. Once the code satisfies the spec, passes all tests, and passes code review, run `just rust-verify` (hard gate), then make a git commit with a helpful commit message. `just rust-verify` is the final Rust gate and should be used instead of stacking duplicate Rust verification commands.
-10. Before reviewing the diff, ensure your branch is fully up to date with main (fetch latest changes, integrate them into your branch, and resolve any conflicts). Confirm the branch builds and tests pass after synchronization. Then review the full diff against main, generate a clear, specific PR title and a structured description explaining what changed, why, risks, and how it was tested, and finally push your branch to origin and create a PR using `gh` with a passed-in body file.
+10. Before reviewing the diff, ensure your branch is fully up to date with main (fetch latest changes, integrate them into your branch, and resolve any conflicts). Confirm the branch builds and tests pass after synchronization. Then review the full diff against main, generate a clear, specific PR title and a structured description explaining what changed (if possible, include specific samples/examples of what chaned, especially if it affects a public interface), why, risks, and how it was tested; finally, push your branch to origin and create a PR using `gh` with a passed-in body file.
 </development-process>
 
 <just-command-rollups>
@@ -83,6 +83,7 @@ When instructed to execute a specified plan, or implement a feature or task, fol
 9. Keep it simple, stupid. Keep functions and code as simple/readable as possible; avoid long one-liners or "clever" code. Follow the principle of least surprise.
 10. Design interfaces & write code in such a way that the next agent that works on the codebase (or the end-user's agent evaluating our project) will find it intuitive and well-structured.
 11. When writing Rust, use edition 2024 idioms, keep modules/functions small, and prefer explicit types/contracts for agent readability.
+12. The CLI should be a "thin client" on top of the client library. Keep all meaningful logic inside the client. Architect Driggsby so that additional thin layers such as MCPs or API servers may be added on top of the client with minimal fuss.
 </key-guidelines>
 
 <rust-safety-rules>
@@ -109,10 +110,15 @@ Basic rule: Keep Rust boring and safe by default.
   - Testing CLI output: If we decide to change something about how the CLI output is structured, do not simply add tests looking for the absence of the prior format. This clutters tests unnecessarily.
   </testing-guidelines>
 </cli-guidelines>
+ 
+<subagent-instructions>
+- Run bash commands directly; don't use subagents for simple command or script runs.
+- Before spawning subagents, *proactively* close any stale/unused agent threads so that agent spawns don't fail with the "too many agent threads" error.
+- Use subagents for longer-running/higher-value tasks like dedicated planning, research, or review tasks.
+</subagent-instructions>
 
 <additional-instructions>
 - Important note: this is an undeployed greenfield project, and as such we are not attempting to maintain back-compat; make breaking changes.
-- Before spawning subagents, *proactively* close any stale/unused agent threads so that agent spawns don't fail with the "too many agent threads" error.
 - When writing documentation or agent-facing text, be appropriately verbose -- prefer explicitness and making it "so easy a drunk person" could understand it. Make it hard to mis-understand what to do and be wary of your tendency to be terse (terse = harder to understand = makes agents feel unsafe/anxious = no bueno).
 - You may use the git commit history, which is detailed, to understand what was previously done in case you have any questions. 
 - Write tests for *functionality*; don't simply create tests for the sake of having tests.

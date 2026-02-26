@@ -8,8 +8,9 @@ const REQUIRED_IMPORT_FIELDS: [(&str, &str); 5] = [
     ("description", "string"),
 ];
 
-const OPTIONAL_IMPORT_FIELDS: [(&str, &str); 4] = [
+const OPTIONAL_IMPORT_FIELDS: [(&str, &str); 5] = [
     ("statement_id", "string"),
+    ("account_type", "string"),
     ("external_id", "string"),
     ("merchant", "string|null"),
     ("category", "string|null"),
@@ -38,6 +39,7 @@ pub fn public_view_contracts() -> Vec<PublicView> {
                 view_column("import_id", "text"),
                 view_column("statement_id", "text|null"),
                 view_column("account_key", "text"),
+                view_column("account_type", "text|null"),
                 view_column("posted_at", "date"),
                 view_column("amount", "real"),
                 view_column("currency", "text"),
@@ -51,10 +53,12 @@ pub fn public_view_contracts() -> Vec<PublicView> {
             name: "v1_accounts".to_string(),
             columns: vec![
                 view_column("account_key", "text"),
+                view_column("account_type", "text|null"),
                 view_column("currency", "text"),
                 view_column("first_posted_at", "date"),
                 view_column("last_posted_at", "date"),
                 view_column("txn_count", "integer"),
+                view_column("net_amount", "real"),
             ],
         },
         PublicView {

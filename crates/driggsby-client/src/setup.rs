@@ -42,6 +42,15 @@ const INTERNAL_TRANSACTIONS_COLUMNS: [&str; 12] = [
     "merchant",
     "category",
 ];
+const INTERNAL_ACCOUNTS_COLUMNS: [&str; 4] =
+    ["account_key", "account_type", "created_at", "updated_at"];
+const INTERNAL_IMPORT_ACCOUNT_STATS_COLUMNS: [&str; 5] = [
+    "import_id",
+    "account_key",
+    "rows_read",
+    "inserted",
+    "deduped",
+];
 const INTERNAL_TRANSACTION_DEDUPE_CANDIDATES_COLUMNS: [&str; 20] = [
     "candidate_id",
     "import_id",
@@ -66,11 +75,17 @@ const INTERNAL_TRANSACTION_DEDUPE_CANDIDATES_COLUMNS: [&str; 20] = [
 ];
 const INTERNAL_RECURRING_COLUMNS: [&str; 3] = ["merchant", "typical_amount", "cadence"];
 const INTERNAL_ANOMALIES_COLUMNS: [&str; 3] = ["posted_at", "amount", "reason"];
+const EXPECTED_USER_VERSION: i64 = 5;
 
-const REQUIRED_CORE_TABLES: [(&str, &[&str]); 6] = [
+const REQUIRED_CORE_TABLES: [(&str, &[&str]); 8] = [
     ("internal_meta", &INTERNAL_META_COLUMNS),
     ("internal_import_runs", &INTERNAL_IMPORT_RUNS_COLUMNS),
     ("internal_transactions", &INTERNAL_TRANSACTIONS_COLUMNS),
+    ("internal_accounts", &INTERNAL_ACCOUNTS_COLUMNS),
+    (
+        "internal_import_account_stats",
+        &INTERNAL_IMPORT_ACCOUNT_STATS_COLUMNS,
+    ),
     (
         "internal_transaction_dedupe_candidates",
         &INTERNAL_TRANSACTION_DEDUPE_CANDIDATES_COLUMNS,
@@ -202,6 +217,13 @@ fn repair_safe_objects(connection: &Connection, db_path: &Path) -> ClientResult<
 }
 
 fn verify_post_repair_objects(connection: &Connection, db_path: &Path) -> ClientResult<()> {
+    let user_version = connection
+        .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+        .map_err(|error| map_sqlite_error(db_path, &error))?;
+    if user_version != EXPECTED_USER_VERSION {
+        return Err(ClientError::ledger_corrupt(db_path));
+    }
+
     for (meta_key, expected_value) in REQUIRED_META_KEYS {
         let value = connection
             .query_row(

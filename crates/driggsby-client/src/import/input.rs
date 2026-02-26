@@ -72,12 +72,10 @@ pub(crate) fn resolve_source(
             )
         })?;
 
-        let mut warnings = Vec::new();
         if has_stdin {
-            warnings.push(ImportWarning {
-                code: "stdin_ignored_file_provided".to_string(),
-                message: "Both stdin and file were provided; file input was used.".to_string(),
-            });
+            return Err(invalid_input_error(
+                "Both stdin and file input were provided. Pass exactly one source: either a file path or piped stdin.",
+            ));
         }
 
         return Ok(ResolvedSource {
@@ -85,13 +83,9 @@ pub(crate) fn resolve_source(
             source_ref: Some(path_value),
             content: file_body,
             source_used: Some("file".to_string()),
-            source_ignored: if has_stdin {
-                Some("stdin".to_string())
-            } else {
-                None
-            },
-            source_conflict: has_stdin,
-            warnings,
+            source_ignored: None,
+            source_conflict: false,
+            warnings: Vec::<ImportWarning>::new(),
         });
     }
 

@@ -12,7 +12,7 @@ pub(crate) mod validate;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use rusqlite::TransactionBehavior;
+use rusqlite::{OptionalExtension, TransactionBehavior, params};
 use ulid::Ulid;
 
 use crate::contracts::types::{
@@ -29,6 +29,7 @@ pub(crate) struct CanonicalTransaction {
     pub statement_id: Option<String>,
     pub dedupe_scope_id: String,
     pub account_key: String,
+    pub account_type: Option<String>,
     pub posted_at: String,
     pub amount: f64,
     pub currency: String,
@@ -56,6 +57,7 @@ pub(crate) struct ImportExecutionResult {
     pub key_inventory: Option<ImportKeyInventory>,
     pub sign_profiles: Option<Vec<ImportSignProfile>>,
     pub drift_warnings: Option<Vec<ImportDriftWarning>>,
+    pub ledger_accounts: Option<crate::contracts::types::AccountsData>,
 }
 
 pub(crate) fn execute(
@@ -88,6 +90,22 @@ pub(crate) fn execute(
         return Err(ClientError::import_validation_failed(
             summary,
             statement_id_reuse_issues,
+        ));
+    }
+    let account_type_conflict_issues =
+        find_account_type_conflict_issues(&connection, &validated.account_type_rows, &db_path)?;
+    if !account_type_conflict_issues.is_empty() {
+        let invalid_row_count = account_type_conflict_issues
+            .iter()
+            .map(|issue| issue.row)
+            .collect::<HashSet<i64>>()
+            .len() as i64;
+        let mut summary = validated.summary.clone();
+        summary.rows_invalid = invalid_row_count;
+        summary.rows_valid = summary.rows_read - invalid_row_count;
+        return Err(ClientError::import_validation_failed(
+            summary,
+            account_type_conflict_issues,
         ));
     }
     let batch_deduped = dedupe::dedupe_batch(validated.rows);
@@ -123,6 +141,7 @@ pub(crate) fn execute(
             None,
             duplicate_summary.total,
             Some(resolved_source.source_kind.as_str()),
+            resolved_source.source_ref.as_deref(),
         );
         let message = if resolved_source.source_ignored.is_some() {
             "Validation passed. No rows were written. File input was used and stdin was ignored."
@@ -148,6 +167,7 @@ pub(crate) fn execute(
             key_inventory: Some(dry_run_analysis.key_inventory),
             sign_profiles: Some(dry_run_analysis.sign_profiles),
             drift_warnings: Some(dry_run_analysis.drift_warnings),
+            ledger_accounts: None,
         });
     }
 
@@ -173,6 +193,7 @@ pub(crate) fn execute(
             source_ref: resolved_source.source_ref.as_deref(),
         },
     )?;
+    let ledger_accounts = crate::commands::accounts::query_accounts_data(&connection, &db_path)?;
     let summary = ImportCreateSummary {
         rows_read: validated.summary.rows_read,
         rows_valid: validated.summary.rows_valid,
@@ -189,6 +210,7 @@ pub(crate) fn execute(
         Some(&persisted.import_id),
         duplicate_summary.total,
         Some(resolved_source.source_kind.as_str()),
+        None,
     );
 
     let message = if resolved_source.source_ignored.is_some() {
@@ -214,7 +236,55 @@ pub(crate) fn execute(
         key_inventory: None,
         sign_profiles: None,
         drift_warnings: None,
+        ledger_accounts: Some(ledger_accounts),
     })
+}
+
+fn find_account_type_conflict_issues(
+    connection: &rusqlite::Connection,
+    account_type_rows: &std::collections::HashMap<(String, String), Vec<i64>>,
+    db_path: &std::path::Path,
+) -> ClientResult<Vec<ImportIssue>> {
+    let mut issues = Vec::new();
+
+    for ((account_key, incoming_type), source_rows) in account_type_rows {
+        let existing_type = connection
+            .query_row(
+                "SELECT account_type
+                 FROM internal_accounts
+                 WHERE account_key = ?1
+                   AND account_type IS NOT NULL
+                   AND TRIM(account_type) <> ''
+                 LIMIT 1",
+                params![account_key],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| crate::state::map_sqlite_error(db_path, &error))?;
+
+        let Some(existing_type) = existing_type else {
+            continue;
+        };
+        if existing_type == *incoming_type {
+            continue;
+        }
+
+        for row in source_rows {
+            issues.push(ImportIssue {
+                row: *row,
+                field: "account_type".to_string(),
+                code: "account_type_conflicts_with_ledger".to_string(),
+                description: format!(
+                    "account_key `{account_key}` already uses account_type `{existing_type}` in this ledger. Received conflicting value `{incoming_type}`."
+                ),
+                expected: Some(existing_type.clone()),
+                received: Some(incoming_type.clone()),
+            });
+        }
+    }
+
+    issues.sort_by_key(|issue| issue.row);
+    Ok(issues)
 }
 
 fn merge_duplicate_rows(
@@ -293,16 +363,20 @@ fn build_next_actions(
     import_id: Option<&str>,
     duplicate_total: i64,
     source_kind: Option<&str>,
+    source_ref: Option<&str>,
 ) -> (ImportNextStep, Vec<ImportAction>) {
     if dry_run {
         let dry_run_command = match source_kind {
-            Some("stdin") => "driggsby import create",
-            _ => "driggsby import create <path>",
+            Some("stdin") => "cat <path-to-input.json> | driggsby import create -".to_string(),
+            Some("file") => source_ref
+                .map(build_create_command_with_path)
+                .unwrap_or_else(|| "driggsby import create <path>".to_string()),
+            _ => "driggsby import create <path>".to_string(),
         };
         return (
             ImportNextStep {
                 label: "Commit this import".to_string(),
-                command: dry_run_command.to_string(),
+                command: dry_run_command,
             },
             Vec::new(),
         );
@@ -317,17 +391,19 @@ fn build_next_actions(
     if duplicate_total > 0
         && let Some(id) = import_id
     {
+        let command = build_import_command_with_id("duplicates", id);
         other_actions.push(ImportAction {
             label: "View duplicates".to_string(),
-            command: format!("driggsby import duplicates {id}"),
+            command,
             risk: None,
         });
     }
 
     if let Some(id) = import_id {
+        let command = build_import_command_with_id("undo", id);
         other_actions.push(ImportAction {
             label: "Undo this import (destructive)".to_string(),
-            command: format!("driggsby import undo {id}"),
+            command,
             risk: Some("destructive".to_string()),
         });
     }
@@ -339,4 +415,31 @@ fn build_next_actions(
         },
         other_actions,
     )
+}
+
+fn build_create_command_with_path(path: &str) -> String {
+    if let Some(quoted_path) = quote_shell_arg(path) {
+        format!("driggsby import create {quoted_path}")
+    } else {
+        "driggsby import create <path>".to_string()
+    }
+}
+
+fn build_import_command_with_id(action: &str, import_id: &str) -> String {
+    let base_command = format!("driggsby import {action}");
+
+    if let Some(quoted_id) = quote_shell_arg(import_id) {
+        format!("{base_command} {quoted_id}")
+    } else {
+        format!("{base_command} <import-id>")
+    }
+}
+
+fn quote_shell_arg(value: &str) -> Option<String> {
+    if value.chars().any(char::is_control) {
+        return None;
+    }
+    shlex::try_quote(value)
+        .ok()
+        .map(|quoted| quoted.into_owned())
 }

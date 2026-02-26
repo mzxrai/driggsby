@@ -4,8 +4,9 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::contracts::envelope::{SuccessEnvelope, success};
 use crate::contracts::types::{
-    ImportData, ImportDuplicateRow, ImportDuplicatesData, ImportKeysUniqData, ImportListData,
-    ImportListItem, ImportPropertyInventory, ImportUndoData, ImportUndoSummary, QueryContext,
+    ImportData, ImportDuplicateRow, ImportDuplicatesData, ImportKeysUniqData,
+    ImportListAccountStat, ImportListData, ImportListItem, ImportPropertyInventory, ImportUndoData,
+    ImportUndoSummary, QueryContext,
 };
 use crate::import;
 use crate::setup::{ensure_initialized, ensure_initialized_at};
@@ -91,6 +92,7 @@ pub fn run_with_options(options: ImportRunOptions<'_>) -> ClientResult<SuccessEn
         key_inventory: execution.key_inventory,
         sign_profiles: execution.sign_profiles,
         drift_warnings: execution.drift_warnings,
+        ledger_accounts: execution.ledger_accounts,
         query_context,
     };
 
@@ -142,6 +144,7 @@ pub fn list_with_options(options: ImportListOptions<'_>) -> ClientResult<Success
                 deduped: row.get(9)?,
                 source_kind: row.get::<_, Option<String>>(10)?,
                 source_ref: row.get::<_, Option<String>>(11)?,
+                accounts: Vec::new(),
             })
         })
         .map_err(|error| map_sqlite_error(&db_path, &error))?;
@@ -150,6 +153,44 @@ pub fn list_with_options(options: ImportListOptions<'_>) -> ClientResult<Success
     for row in rows_iter {
         let item = row.map_err(|error| map_sqlite_error(&db_path, &error))?;
         rows.push(item);
+    }
+
+    let mut stats_by_import: std::collections::HashMap<String, Vec<ImportListAccountStat>> =
+        std::collections::HashMap::new();
+    let mut stats_statement = connection
+        .prepare(
+            "SELECT
+                s.import_id,
+                s.account_key,
+                a.account_type,
+                s.rows_read,
+                s.inserted,
+                s.deduped
+             FROM internal_import_account_stats s
+             LEFT JOIN internal_accounts a ON a.account_key = s.account_key
+             ORDER BY s.import_id ASC, s.account_key ASC",
+        )
+        .map_err(|error| map_sqlite_error(&db_path, &error))?;
+    let stats_iter = stats_statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                ImportListAccountStat {
+                    account_key: row.get(1)?,
+                    account_type: row.get::<_, Option<String>>(2)?,
+                    rows_read: row.get(3)?,
+                    inserted: row.get(4)?,
+                    deduped: row.get(5)?,
+                },
+            ))
+        })
+        .map_err(|error| map_sqlite_error(&db_path, &error))?;
+    for row in stats_iter {
+        let (import_id, stat) = row.map_err(|error| map_sqlite_error(&db_path, &error))?;
+        stats_by_import.entry(import_id).or_default().push(stat);
+    }
+    for row in &mut rows {
+        row.accounts = stats_by_import.remove(&row.import_id).unwrap_or_default();
     }
 
     success("import list", ImportListData { rows })
@@ -354,10 +395,10 @@ fn parse_requested_property(
     let Some(property) = import::inventory::TrackedProperty::parse(&raw_property) else {
         return Err(ClientError::invalid_argument_with_recovery(
             &format!(
-                "Invalid property `{raw_property}`. Supported values: account_key, currency, merchant, category."
+                "Invalid property `{raw_property}`. Supported values: account_key, account_type, currency, merchant, category."
             ),
             vec![
-                "Use one of: account_key, currency, merchant, category.".to_string(),
+                "Use one of: account_key, account_type, currency, merchant, category.".to_string(),
                 "Run `driggsby import keys uniq --help` for usage.".to_string(),
             ],
         ));
@@ -372,6 +413,7 @@ fn select_property_inventory(
 ) -> ImportPropertyInventory {
     match property {
         import::inventory::TrackedProperty::AccountKey => inventory.account_key.clone(),
+        import::inventory::TrackedProperty::AccountType => inventory.account_type.clone(),
         import::inventory::TrackedProperty::Currency => inventory.currency.clone(),
         import::inventory::TrackedProperty::Merchant => inventory.merchant.clone(),
         import::inventory::TrackedProperty::Category => inventory.category.clone(),

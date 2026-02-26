@@ -41,8 +41,13 @@ pub fn parse_iso_date(value: &str) -> Result<IsoDate, String> {
 
 pub fn parse_import_key_property(value: &str) -> Result<String, String> {
     match value {
-        "account_key" | "currency" | "merchant" | "category" => Ok(value.to_string()),
-        _ => Err("property must be one of: account_key, currency, merchant, category".to_string()),
+        "account_key" | "account_type" | "currency" | "merchant" | "category" => {
+            Ok(value.to_string())
+        }
+        _ => Err(
+            "property must be one of: account_key, account_type, currency, merchant, category"
+                .to_string(),
+        ),
     }
 }
 
@@ -75,6 +80,7 @@ Import schema:
   [
     {
       \"account_key\": \"chase_checking_1234\",
+      \"account_type\": \"checking\",
       \"posted_at\": \"2026-01-15\",
       \"amount\": -42.15,
       \"currency\": \"USD\",
@@ -87,13 +93,14 @@ Import schema:
   ]
 
   CSV example (header + rows):
-  account_key,posted_at,amount,currency,description,statement_id,external_id,merchant,category
-  chase_checking_1234,2026-01-15,-42.15,USD,WHOLE FOODS,chase_checking_1234_2026-01-31,txn_12345,Whole Foods,Groceries
-  chase_checking_1234,2026-01-16,42.15,USD,REFUND,chase_checking_1234_2026-01-31,txn_12346,Whole Foods,Groceries
+  account_key,account_type,posted_at,amount,currency,description,statement_id,external_id,merchant,category
+  chase_checking_1234,checking,2026-01-15,-42.15,USD,WHOLE FOODS,chase_checking_1234_2026-01-31,txn_12345,Whole Foods,Groceries
+  chase_checking_1234,checking,2026-01-16,42.15,USD,REFUND,chase_checking_1234_2026-01-31,txn_12346,Whole Foods,Groceries
 
 Stability rule (important):
   Keep canonical identifiers and labels exactly the same across imports.
   This includes `account_key`, `currency`, `merchant`, and `category`.
+  When known, keep `account_type` stable too.
   If these drift over time, your ledger analysis will drift too.
   Before mapping new files, run `driggsby import keys uniq` and copy those canonical values.
 
@@ -105,6 +112,13 @@ Field rules (very explicit):
   posted_at (required):
     Date only, exactly `YYYY-MM-DD`.
     Example: `2026-01-15`
+
+  account_type (optional but recommended):
+    Canonical values:
+      checking, savings, credit_card, loan, brokerage, retirement, hsa, other
+    Common aliases are accepted and normalized automatically, including:
+      creditcard, credit-card, retirement_401k, 401k_retirement, investment_taxable
+    If provided for an account_key, keep it consistent forever.
 
   amount (required):
     A number, not text.
@@ -158,6 +172,12 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
+    /// Manage account-level ledger orientation commands
+    #[command(arg_required_else_help = true)]
+    Account {
+        #[command(subcommand)]
+        command: AccountCommand,
+    },
     /// Show your local database path, connection URI, and public view contracts
     Schema {
         #[command(subcommand)]
@@ -201,6 +221,16 @@ pub enum Commands {
     },
     /// Open the Driggsby web dashboard in your browser
     Dash,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum AccountCommand {
+    /// Show account-level orientation for your current ledger
+    List {
+        /// Emit machine-readable JSON output
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -260,7 +290,7 @@ pub enum ImportCommand {
 pub enum ImportKeysCommand {
     /// List canonical unique values for one tracked property or all tracked properties
     Uniq {
-        /// Optional property filter: account_key, currency, merchant, or category
+        /// Optional property filter: account_key, account_type, currency, merchant, or category
         #[arg(value_parser = parse_import_key_property)]
         property: Option<String>,
         /// Emit machine-readable JSON output
@@ -292,11 +322,13 @@ where
 mod tests {
     use clap::error::ErrorKind;
 
-    use super::{Commands, DemoCommand, ImportCommand, SchemaCommand, parse_from};
+    use super::{AccountCommand, Commands, DemoCommand, ImportCommand, SchemaCommand, parse_from};
 
     #[test]
     fn parse_command_paths() {
-        let cases: [Vec<&str>; 20] = [
+        let cases: [Vec<&str>; 22] = [
+            vec!["driggsby", "account", "list"],
+            vec!["driggsby", "account", "list", "--json"],
             vec!["driggsby", "schema"],
             vec!["driggsby", "schema", "view", "v1_transactions"],
             vec!["driggsby", "import", "create"],
@@ -360,6 +392,20 @@ mod tests {
     }
 
     #[test]
+    fn parse_account_list_subcommand() {
+        let parsed = parse_from(["driggsby", "account", "list", "--json"]);
+        assert!(parsed.is_ok());
+        if let Ok(cli) = parsed {
+            assert!(matches!(
+                cli.command,
+                Commands::Account {
+                    command: AccountCommand::List { json: true }
+                }
+            ));
+        }
+    }
+
+    #[test]
     fn parse_import_subcommands() {
         let parsed = parse_from(["driggsby", "import", "undo", "imp_1"]);
         assert!(parsed.is_ok());
@@ -395,6 +441,16 @@ mod tests {
         let parsed_keys_with_property =
             parse_from(["driggsby", "import", "keys", "uniq", "merchant", "--json"]);
         assert!(parsed_keys_with_property.is_ok());
+
+        let parsed_account_type = parse_from([
+            "driggsby",
+            "import",
+            "keys",
+            "uniq",
+            "account_type",
+            "--json",
+        ]);
+        assert!(parsed_account_type.is_ok());
     }
 
     #[test]
@@ -539,6 +595,18 @@ mod tests {
     #[test]
     fn bare_import_shows_help() {
         let parsed = parse_from(["driggsby", "import"]);
+        assert!(parsed.is_err());
+        if let Err(err) = parsed {
+            assert_eq!(
+                err.kind(),
+                ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+            );
+        }
+    }
+
+    #[test]
+    fn bare_account_shows_help() {
+        let parsed = parse_from(["driggsby", "account"]);
         assert!(parsed.is_err());
         if let Err(err) = parsed {
             assert_eq!(

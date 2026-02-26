@@ -1,11 +1,13 @@
 mod cli;
 mod dispatch;
 mod output;
+mod stdout_io;
 
 use std::process::ExitCode;
 
 use clap::{Parser, error::ErrorKind};
 use driggsby_client::ClientError;
+use stdout_io::write_stdout_text;
 
 const ROOT_HELP: &str = "Driggsby - personal finance intelligence layer
 
@@ -13,6 +15,7 @@ Usage:
   driggsby <command>
 
 Start here:
+  driggsby account list
   driggsby import create --help
   driggsby schema
 ";
@@ -22,30 +25,29 @@ const TOP_LEVEL_HELP: &str = "Driggsby — personal finance intelligence layer
 USAGE: driggsby <command>
 
 Try it:
-  driggsby demo dash                            Open sample dashboard with bundled data
-  driggsby demo recurring                       Preview sample recurring patterns
-  driggsby demo anomalies                       Preview sample anomaly detection
+  driggsby demo dash                                      Open sample dashboard with bundled data
+  driggsby demo recurring                                 Preview sample recurring patterns
+  driggsby demo anomalies                                 Preview sample anomaly detection
 
 Import your transactions:
-  1. driggsby import create --help              Read import schema and workflow details
-  2. driggsby import create --dry-run <path>    Safely validate import without data writes
-  3. driggsby import create <path>              Import transactions
+  1. driggsby import create --help                        Read import schema and workflow details
+  2. driggsby import create --dry-run <path>              Safely validate import without data writes
+  3. driggsby import create <path>                        Import transactions
 
 View Driggsby analysis (refreshed on each new import):
-  driggsby recurring                            Detect recurring transactions
-  driggsby anomalies                            Detect spending anomalies
-  driggsby dash                                 Open web dashboard (prints URL, attempts browser open)
+  driggsby recurring                                      Detect recurring transactions
+  driggsby anomalies                                      Detect spending anomalies
+  driggsby dash                                           Open web dashboard (prints URL, attempts browser open)
 
 Need to do custom analysis? Run SQL against our views:
-  1. driggsby schema                            Get DB path and view names
+  1. driggsby schema                                      Get DB path and view names
   2. Query `v1_*` views with sqlite3 or any SQL client
 
 Other commands:
-  driggsby import keys uniq                     List canonical import identifiers
-  driggsby import duplicates <id>               Inspect duplicate rows from one import
-  driggsby import list                          List past imports
-  driggsby import undo <id>                     Undo an import
-  driggsby schema view <name>                   Inspect one view's columns
+  driggsby account list                                   Show account-level ledger orientation
+  driggsby import list                                    List past imports
+  driggsby import keys uniq                               List canonical import identifiers
+  driggsby import undo <import-id>                        Undo an import
 
 Want to ensure a clean first run, or having issues/errors?
   Run `driggsby import create --help` for import workflow guidance,
@@ -62,7 +64,9 @@ fn main() -> ExitCode {
 fn run() -> Result<ExitCode, ExitCode> {
     let raw_args = std::env::args().collect::<Vec<String>>();
     if raw_args.len() == 1 {
-        print!("{ROOT_HELP}");
+        if write_stdout_text(ROOT_HELP).is_err() {
+            return Err(ExitCode::from(2));
+        }
         return Ok(ExitCode::SUCCESS);
     }
     let parsed = cli::Cli::try_parse();
@@ -80,12 +84,14 @@ fn run() -> Result<ExitCode, ExitCode> {
                     ErrorKind::DisplayHelp | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
                 ) {
                     if is_top_level_help_request(&raw_args) {
-                        print!("{TOP_LEVEL_HELP}");
-                    } else {
-                        print!("{err}");
+                        if write_stdout_text(TOP_LEVEL_HELP).is_err() {
+                            return Err(ExitCode::from(2));
+                        }
+                    } else if write_stdout_text(&err.to_string()).is_err() {
+                        return Err(ExitCode::from(2));
                     }
-                } else {
-                    print!("{err}");
+                } else if write_stdout_text(&err.to_string()).is_err() {
+                    return Err(ExitCode::from(2));
                 }
                 return Ok(ExitCode::SUCCESS);
             }
@@ -162,6 +168,8 @@ fn command_path_from_args(raw_args: &[String]) -> Option<String> {
     }
 
     let hint = match non_flags.as_slice() {
+        ["account", "list", ..] => Some("account list"),
+        ["account", ..] => Some("account"),
         ["import", "keys", "uniq", ..] => Some("import keys uniq"),
         ["import", "create", ..] => Some("import create"),
         ["import", "list", ..] => Some("import list"),

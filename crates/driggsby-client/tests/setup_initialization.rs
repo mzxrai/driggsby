@@ -46,6 +46,30 @@ fn user_version(connection: &Connection) -> Option<i64> {
         .ok()
 }
 
+fn object_has_column(connection: &Connection, table_or_view: &str, column_name: &str) -> bool {
+    let sql = format!("PRAGMA table_info({table_or_view})");
+    let statement = connection.prepare(&sql);
+    if statement.is_err() {
+        return false;
+    }
+    if let Ok(mut stmt) = statement {
+        let rows = stmt.query_map([], |row| row.get::<_, String>(1));
+        if rows.is_err() {
+            return false;
+        }
+        if let Ok(iter) = rows {
+            for maybe_name in iter {
+                if let Ok(name) = maybe_name
+                    && name == column_name
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 #[test]
 fn setup_creates_ledger_db_at_home_override() {
     let temp = tempdir();
@@ -97,7 +121,7 @@ fn pending_migration_applies_exactly_once() {
             assert!(connection.is_ok());
             if let Ok(conn) = connection {
                 let first_version = user_version(&conn);
-                assert_eq!(first_version, Some(4));
+                assert_eq!(first_version, Some(5));
             }
         }
 
@@ -108,7 +132,64 @@ fn pending_migration_applies_exactly_once() {
             assert!(connection.is_ok());
             if let Ok(conn) = connection {
                 let second_version = user_version(&conn);
-                assert_eq!(second_version, Some(4));
+                assert_eq!(second_version, Some(5));
+            }
+        }
+    }
+}
+
+#[test]
+fn setup_creates_accounts_metadata_objects_and_columns() {
+    let temp = tempdir();
+    assert!(temp.is_ok());
+    if let Ok(temp_dir) = temp {
+        let home = temp_dir.path().join("ledger-home");
+
+        let context = ensure_initialized_at(&home);
+        assert!(context.is_ok());
+        if let Ok(setup_context) = context {
+            let connection = Connection::open(&setup_context.db_path);
+            assert!(connection.is_ok());
+            if let Ok(conn) = connection {
+                assert!(object_exists(&conn, "table", "internal_accounts"));
+                assert!(object_exists(
+                    &conn,
+                    "table",
+                    "internal_import_account_stats"
+                ));
+                assert!(object_has_column(&conn, "internal_accounts", "account_key"));
+                assert!(object_has_column(
+                    &conn,
+                    "internal_accounts",
+                    "account_type"
+                ));
+                assert!(object_has_column(
+                    &conn,
+                    "internal_import_account_stats",
+                    "rows_read"
+                ));
+                assert!(object_has_column(
+                    &conn,
+                    "internal_import_account_stats",
+                    "inserted"
+                ));
+                assert!(object_has_column(
+                    &conn,
+                    "internal_import_account_stats",
+                    "deduped"
+                ));
+                assert!(object_exists(
+                    &conn,
+                    "index",
+                    "idx_internal_import_account_stats_import_id"
+                ));
+                assert!(object_exists(
+                    &conn,
+                    "index",
+                    "idx_internal_import_account_stats_account_key"
+                ));
+                assert!(object_has_column(&conn, "v1_transactions", "account_type"));
+                assert!(object_has_column(&conn, "v1_accounts", "account_type"));
             }
         }
     }

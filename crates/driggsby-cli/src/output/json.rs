@@ -11,6 +11,7 @@ const JSON_VERSION: &str = "v1";
 
 pub fn render_success_json(success: &SuccessEnvelope) -> io::Result<String> {
     let value = match success.command.as_str() {
+        "account list" => render_accounts_json(&success.data),
         "import" => render_import_json(&success.data),
         "import list" => render_import_list_json(&success.data),
         "import duplicates" => render_import_duplicates_json(&success.data),
@@ -27,6 +28,10 @@ pub fn render_success_json(success: &SuccessEnvelope) -> io::Result<String> {
     };
 
     serialize_json_pretty(&value)
+}
+
+fn render_accounts_json(data: &Value) -> Value {
+    data.clone()
 }
 
 pub fn render_error_json(error: &ClientError) -> io::Result<String> {
@@ -48,11 +53,7 @@ pub fn render_error_json(error: &ClientError) -> io::Result<String> {
 }
 
 fn render_import_json(data: &Value) -> Value {
-    json!({
-        "ok": true,
-        "version": JSON_VERSION,
-        "data": data.clone()
-    })
+    render_edit_success_envelope(data)
 }
 
 fn render_import_list_json(data: &Value) -> Value {
@@ -78,22 +79,18 @@ fn render_import_list_json(data: &Value) -> Value {
 }
 
 fn render_import_undo_json(data: &Value) -> Value {
-    json!({
-        "ok": true,
-        "version": JSON_VERSION,
-        "data": data.clone()
-    })
+    render_edit_success_envelope(data)
 }
 
 fn render_import_duplicates_json(data: &Value) -> Value {
-    json!({
-        "ok": true,
-        "version": JSON_VERSION,
-        "data": data.clone()
-    })
+    data.clone()
 }
 
 fn render_import_keys_uniq_json(data: &Value) -> Value {
+    data.clone()
+}
+
+fn render_edit_success_envelope(data: &Value) -> Value {
     json!({
         "ok": true,
         "version": JSON_VERSION,
@@ -232,7 +229,16 @@ mod tests {
                         "created_at": "1",
                         "committed_at": "2",
                         "reverted_at": null,
-                        "status": "committed"
+                        "status": "committed",
+                        "accounts": [
+                            {
+                                "account_key": "acct_1",
+                                "account_type": "checking",
+                                "rows_read": 3,
+                                "inserted": 2,
+                                "deduped": 1
+                            }
+                        ]
                     }
                 ]
             }),
@@ -246,6 +252,10 @@ mod tests {
             if let Ok(value) = parsed {
                 assert!(value.is_array());
                 assert_eq!(value[0]["import_id"], Value::String("imp_1".to_string()));
+                assert_eq!(
+                    value[0]["accounts"][0]["account_key"],
+                    Value::String("acct_1".to_string())
+                );
                 assert_eq!(value[0]["timestamps"]["created"]["epoch_s"], Value::from(1));
                 assert!(value[0]["timestamps"]["created"]["utc"].is_string());
                 assert!(value[0]["timestamps"]["created"]["local"].is_string());
@@ -254,6 +264,95 @@ mod tests {
                     Value::from(2)
                 );
                 assert!(value[0]["timestamps"]["reverted"].is_null());
+            }
+        }
+    }
+
+    #[test]
+    fn accounts_json_returns_raw_data_shape() {
+        let payload = success(
+            "account list",
+            json!({
+                "summary": {
+                    "account_count": 1,
+                    "transaction_count": 3,
+                    "earliest_posted_at": "2026-01-01",
+                    "latest_posted_at": "2026-01-05",
+                    "typed_account_count": 1,
+                    "untyped_account_count": 0,
+                    "net_amount": -12.25
+                },
+                "rows": [
+                    {
+                        "account_key": "acct_1",
+                        "account_type": "checking",
+                        "currency": "USD",
+                        "txn_count": 3,
+                        "first_posted_at": "2026-01-01",
+                        "last_posted_at": "2026-01-05",
+                        "net_amount": -12.25
+                    }
+                ]
+            }),
+        );
+
+        let rendered = render_success_json(&payload);
+        assert!(rendered.is_ok());
+        if let Ok(text) = rendered {
+            let parsed: Result<Value, _> = serde_json::from_str(&text);
+            assert!(parsed.is_ok());
+            if let Ok(value) = parsed {
+                assert!(value["summary"].is_object());
+                assert!(value["rows"].is_array());
+                assert!(value.get("ok").is_none());
+                assert!(value.get("version").is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn import_json_uses_edit_envelope_for_commit_and_dry_run() {
+        let commit_payload = success(
+            "import",
+            json!({
+                "dry_run": false,
+                "import_id": "imp_1"
+            }),
+        );
+        let commit_rendered = render_success_json(&commit_payload);
+        assert!(commit_rendered.is_ok());
+        if let Ok(text) = commit_rendered {
+            let parsed: Result<Value, _> = serde_json::from_str(&text);
+            assert!(parsed.is_ok());
+            if let Ok(value) = parsed {
+                assert_eq!(value["ok"], Value::Bool(true));
+                assert_eq!(value["version"], Value::String("v1".to_string()));
+                assert_eq!(
+                    value["data"]["import_id"],
+                    Value::String("imp_1".to_string())
+                );
+            }
+        }
+
+        let dry_run_payload = success(
+            "import",
+            json!({
+                "dry_run": true,
+                "summary": {
+                    "rows_read": 1
+                }
+            }),
+        );
+        let dry_run_rendered = render_success_json(&dry_run_payload);
+        assert!(dry_run_rendered.is_ok());
+        if let Ok(text) = dry_run_rendered {
+            let parsed: Result<Value, _> = serde_json::from_str(&text);
+            assert!(parsed.is_ok());
+            if let Ok(value) = parsed {
+                assert_eq!(value["ok"], Value::Bool(true));
+                assert_eq!(value["version"], Value::String("v1".to_string()));
+                assert_eq!(value["data"]["dry_run"], Value::Bool(true));
+                assert_eq!(value["data"]["summary"]["rows_read"], Value::from(1));
             }
         }
     }
@@ -336,7 +435,7 @@ mod tests {
     }
 
     #[test]
-    fn import_duplicates_json_uses_structured_envelope() {
+    fn import_duplicates_json_returns_raw_data_shape() {
         let payload = success(
             "import duplicates",
             json!({
@@ -352,12 +451,11 @@ mod tests {
             let parsed: Result<Value, _> = serde_json::from_str(&text);
             assert!(parsed.is_ok());
             if let Ok(value) = parsed {
-                assert_eq!(value["ok"], Value::Bool(true));
-                assert_eq!(value["version"], Value::String("v1".to_string()));
-                assert_eq!(
-                    value["data"]["import_id"],
-                    Value::String("imp_1".to_string())
-                );
+                assert_eq!(value["import_id"], Value::String("imp_1".to_string()));
+                assert!(value["rows"].is_array());
+                assert!(value.get("ok").is_none());
+                assert!(value.get("version").is_none());
+                assert!(value.get("data").is_none());
             }
         }
     }

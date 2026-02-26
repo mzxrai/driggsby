@@ -356,9 +356,27 @@ fn keys_uniq_returns_sorted_values_for_property_and_all_properties() {
             if let Ok(value) = payload {
                 assert!(value["data"]["inventories"].is_array());
                 assert_eq!(value["data"]["inventories"][0]["property"], "account_key");
-                assert_eq!(value["data"]["inventories"][1]["property"], "currency");
-                assert_eq!(value["data"]["inventories"][2]["property"], "merchant");
-                assert_eq!(value["data"]["inventories"][3]["property"], "category");
+                assert_eq!(value["data"]["inventories"][1]["property"], "account_type");
+                assert_eq!(value["data"]["inventories"][2]["property"], "currency");
+                assert_eq!(value["data"]["inventories"][3]["property"], "merchant");
+                assert_eq!(value["data"]["inventories"][4]["property"], "category");
+            }
+        }
+
+        let account_type_result = import::keys_uniq_with_options(ImportKeysUniqOptions {
+            property: Some("account_type".to_string()),
+            home_override: Some(&home),
+        });
+        assert!(account_type_result.is_ok());
+        if let Ok(success) = account_type_result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                assert_eq!(
+                    value["data"]["property"],
+                    Value::String("account_type".to_string())
+                );
+                assert!(value["data"]["inventories"][0]["existing_values"].is_array());
             }
         }
     }
