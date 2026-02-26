@@ -599,6 +599,51 @@ fn import_create_plaintext_schema_mismatch_includes_header_guidance() {
 }
 
 #[test]
+fn import_create_json_statement_id_reuse_returns_validation_issue() {
+    let home = unique_test_home();
+    let first_path = write_source_file(
+        &home,
+        "statement-reuse-first.json",
+        r#"[
+  {"statement_id":"acct_cli_reuse_1_2026-05-31","account_key":"acct_cli_reuse_1","posted_at":"2026-05-01","amount":-10.00,"currency":"USD","description":"FIRST"}
+]"#,
+    );
+    let second_path = write_source_file(
+        &home,
+        "statement-reuse-second.json",
+        r#"[
+  {"statement_id":"acct_cli_reuse_1_2026-05-31","account_key":"acct_cli_reuse_1","posted_at":"2026-05-02","amount":-20.00,"currency":"USD","description":"SECOND"}
+]"#,
+    );
+    let first_arg = first_path.display().to_string();
+    let second_arg = second_path.display().to_string();
+
+    let (first_ok, _first_body) =
+        run_cli_in_home_with_input(&home, &["import", "create", &first_arg, "--json"], None);
+    assert!(first_ok);
+
+    let (second_ok, second_body) = run_cli_in_home_with_input(
+        &home,
+        &["import", "create", "--dry-run", &second_arg, "--json"],
+        None,
+    );
+    assert!(!second_ok);
+    let payload = parse_json(&second_body);
+    assert_eq!(
+        payload["error"]["code"],
+        Value::String("import_validation_failed".to_string())
+    );
+    assert_eq!(
+        payload["error"]["data"]["issues"][0]["field"],
+        Value::String("statement_id".to_string())
+    );
+    assert_eq!(
+        payload["error"]["data"]["issues"][0]["code"],
+        Value::String("statement_id_reused".to_string())
+    );
+}
+
+#[test]
 fn import_duplicates_plaintext_and_json_contracts_are_supported() {
     let home = unique_test_home();
     let source_path = write_source_file(

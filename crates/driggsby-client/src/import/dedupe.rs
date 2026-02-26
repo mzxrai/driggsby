@@ -4,6 +4,7 @@ use std::path::Path;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::ClientResult;
+use crate::contracts::types::ImportIssue;
 use crate::import::CanonicalTransaction;
 use crate::state::map_sqlite_error;
 
@@ -213,4 +214,48 @@ pub(crate) fn find_existing_match(
         )
         .optional()
         .map_err(|error| map_sqlite_error(db_path, &error))
+}
+
+pub(crate) fn find_statement_id_reuse_issues(
+    connection: &Connection,
+    statement_id_rows: &HashMap<(String, String), Vec<i64>>,
+    db_path: &Path,
+) -> ClientResult<Vec<ImportIssue>> {
+    let mut issues = Vec::new();
+
+    for ((account_key, statement_id), source_rows) in statement_id_rows {
+        let existing_import_id = connection
+            .query_row(
+                "SELECT import_id
+                 FROM internal_transactions
+                 WHERE account_key = ?1
+                   AND statement_id = ?2
+                 ORDER BY txn_id ASC
+                 LIMIT 1",
+                params![account_key, statement_id],
+                |result| result.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| map_sqlite_error(db_path, &error))?;
+
+        let Some(existing_import_id) = existing_import_id else {
+            continue;
+        };
+
+        for row in source_rows {
+            issues.push(ImportIssue {
+                row: *row,
+                field: "statement_id".to_string(),
+                code: "statement_id_reused".to_string(),
+                description: format!(
+                    "statement_id `{statement_id}` for account_key `{account_key}` already exists in import `{existing_import_id}`. Each provided statement_id must be unique across imports."
+                ),
+                expected: Some("new statement_id value not used in prior imports".to_string()),
+                received: Some(statement_id.to_string()),
+            });
+        }
+    }
+
+    issues.sort_by_key(|issue| issue.row);
+    Ok(issues)
 }

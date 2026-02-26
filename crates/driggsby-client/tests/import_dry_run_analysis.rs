@@ -82,7 +82,7 @@ fn dry_run_includes_inventory_sign_profiles_and_drift_warnings() {
         let dry_run_path = home.join("dry-run.json");
         let dry_run_rows = json!([
             {
-                "statement_id": "chase_checking_1234_2026-01-31",
+                "statement_id": "chase_checking_1234_2026-03-31",
                 "account_key": "chase_checking_1234",
                 "posted_at": "2026-03-01",
                 "amount": 120.00,
@@ -92,7 +92,7 @@ fn dry_run_includes_inventory_sign_profiles_and_drift_warnings() {
                 "category": "Groceries"
             },
             {
-                "statement_id": "chase_checking_1234_2026-01-31",
+                "statement_id": "chase_checking_1234_2026-03-31",
                 "account_key": "chase_checking_1234",
                 "posted_at": "2026-03-02",
                 "amount": 130.00,
@@ -102,7 +102,7 @@ fn dry_run_includes_inventory_sign_profiles_and_drift_warnings() {
                 "category": "Groceries"
             },
             {
-                "statement_id": "chase_checking_1234_2026-01-31",
+                "statement_id": "chase_checking_1234_2026-03-31",
                 "account_key": "chase_checking_1234",
                 "posted_at": "2026-03-03",
                 "amount": 140.00,
@@ -112,7 +112,7 @@ fn dry_run_includes_inventory_sign_profiles_and_drift_warnings() {
                 "category": "Travel"
             },
             {
-                "statement_id": "chase_checking_1234_2026-01-31",
+                "statement_id": "chase_checking_1234_2026-03-31",
                 "account_key": "chase_checking_1234",
                 "posted_at": "2026-03-04",
                 "amount": 150.00,
@@ -122,7 +122,7 @@ fn dry_run_includes_inventory_sign_profiles_and_drift_warnings() {
                 "category": "Groceries"
             },
             {
-                "statement_id": "chase_checking_1234_2026-01-31",
+                "statement_id": "chase_checking_1234_2026-03-31",
                 "account_key": "chase_checking_1234",
                 "posted_at": "2026-03-05",
                 "amount": 160.00,
@@ -206,7 +206,7 @@ fn dry_run_deduped_duplicates_do_not_trigger_sign_profile_anomaly() {
             &duplicate_path,
             &json!([
                 {
-                    "statement_id": "acct_sign_1_2026-01-31",
+                    "statement_id": "acct_sign_1_2026-03-31",
                     "account_key": "acct_sign_1",
                     "posted_at": "2026-04-01",
                     "amount": 40.0,
@@ -214,7 +214,7 @@ fn dry_run_deduped_duplicates_do_not_trigger_sign_profile_anomaly() {
                     "description": "DUPLICATE-POSITIVE"
                 },
                 {
-                    "statement_id": "acct_sign_1_2026-02-28",
+                    "statement_id": "acct_sign_1_2026-04-30",
                     "account_key": "acct_sign_1",
                     "posted_at": "2026-04-01",
                     "amount": 40.0,
@@ -222,7 +222,7 @@ fn dry_run_deduped_duplicates_do_not_trigger_sign_profile_anomaly() {
                     "description": "DUPLICATE-POSITIVE"
                 },
                 {
-                    "statement_id": "acct_sign_1_2026-02-28",
+                    "statement_id": "acct_sign_1_2026-04-30",
                     "account_key": "acct_sign_1",
                     "posted_at": "2026-04-01",
                     "amount": 40.0,
@@ -230,7 +230,7 @@ fn dry_run_deduped_duplicates_do_not_trigger_sign_profile_anomaly() {
                     "description": "DUPLICATE-POSITIVE"
                 },
                 {
-                    "statement_id": "acct_sign_1_2026-02-28",
+                    "statement_id": "acct_sign_1_2026-04-30",
                     "account_key": "acct_sign_1",
                     "posted_at": "2026-04-01",
                     "amount": 40.0,
@@ -238,7 +238,7 @@ fn dry_run_deduped_duplicates_do_not_trigger_sign_profile_anomaly() {
                     "description": "DUPLICATE-POSITIVE"
                 },
                 {
-                    "statement_id": "acct_sign_1_2026-02-28",
+                    "statement_id": "acct_sign_1_2026-04-30",
                     "account_key": "acct_sign_1",
                     "posted_at": "2026-04-01",
                     "amount": 40.0,

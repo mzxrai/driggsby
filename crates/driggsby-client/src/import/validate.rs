@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::contracts::types::{ImportIssue, ImportSummary};
 use crate::import::CanonicalTransaction;
 use crate::import::parse::ParsedRow;
@@ -7,6 +9,7 @@ use crate::{ClientError, ClientResult};
 pub(crate) struct ValidatedRows {
     pub(crate) rows: Vec<CanonicalTransaction>,
     pub(crate) summary: ImportSummary,
+    pub(crate) statement_id_rows: HashMap<(String, String), Vec<i64>>,
 }
 
 pub(crate) fn validate_rows(
@@ -16,6 +19,7 @@ pub(crate) fn validate_rows(
     let total_rows = parsed_rows.len();
     let mut rows = Vec::new();
     let mut issues = Vec::new();
+    let mut statement_id_rows: HashMap<(String, String), Vec<i64>> = HashMap::new();
 
     for raw in parsed_rows {
         let mut row_issues = Vec::new();
@@ -48,6 +52,14 @@ pub(crate) fn validate_rows(
         let category = normalize_optional(raw.category);
 
         if row_issues.is_empty() {
+            if let (Some(account_key_value), Some(statement_id_value)) =
+                (account_key.as_ref(), statement_id.as_ref())
+            {
+                statement_id_rows
+                    .entry((account_key_value.clone(), statement_id_value.clone()))
+                    .or_default()
+                    .push(raw.row);
+            }
             rows.push(CanonicalTransaction {
                 statement_id,
                 dedupe_scope_id: dedupe_scope_id.unwrap_or_default(),
@@ -81,7 +93,11 @@ pub(crate) fn validate_rows(
         return Err(ClientError::import_validation_failed(summary, issues));
     }
 
-    Ok(ValidatedRows { rows, summary })
+    Ok(ValidatedRows {
+        rows,
+        summary,
+        statement_id_rows,
+    })
 }
 
 fn resolve_dedupe_scope_id(
