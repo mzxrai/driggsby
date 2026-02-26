@@ -9,6 +9,7 @@ pub(crate) mod sign_profiles;
 pub(crate) mod undo;
 pub(crate) mod validate;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use rusqlite::TransactionBehavior;
@@ -67,10 +68,29 @@ pub(crate) fn execute(
     let parsed_rows = parse::parse_source(&resolved_source.content)?;
     let statement_scope_id = format!("scope_{}", Ulid::new());
     let validated = validate::validate_rows(parsed_rows, &statement_scope_id)?;
-    let batch_deduped = dedupe::dedupe_batch(validated.rows);
 
     let db_path = PathBuf::from(&setup.db_path);
     let mut connection = open_connection(&db_path)?;
+    let statement_id_reuse_issues = dedupe::find_statement_id_reuse_issues(
+        &connection,
+        &validated.statement_id_rows,
+        &db_path,
+    )?;
+    if !statement_id_reuse_issues.is_empty() {
+        let invalid_row_count = statement_id_reuse_issues
+            .iter()
+            .map(|issue| issue.row)
+            .collect::<HashSet<i64>>()
+            .len() as i64;
+        let mut summary = validated.summary.clone();
+        summary.rows_invalid = invalid_row_count;
+        summary.rows_valid = summary.rows_read - invalid_row_count;
+        return Err(ClientError::import_validation_failed(
+            summary,
+            statement_id_reuse_issues,
+        ));
+    }
+    let batch_deduped = dedupe::dedupe_batch(validated.rows);
 
     if dry_run {
         let transaction = connection

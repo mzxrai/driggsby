@@ -521,9 +521,9 @@ fn dedupe_counts_batch_and_existing_rows() {
         write_file(
             &second_path,
             r#"[
-  {"statement_id":"chase_checking_1234_2026-01-31","account_key":"chase_checking_1234","posted_at":"2026-01-01","amount":-10.00,"currency":"USD","description":"A","external_id":"ext_1"},
-  {"statement_id":"chase_checking_1234_2026-01-31","account_key":"chase_checking_1234","posted_at":"2026-01-03","amount":-30.00,"currency":"USD","description":"C"},
-  {"statement_id":"chase_checking_1234_2026-01-31","account_key":"chase_checking_1234","posted_at":"2026-01-03","amount":-30.00,"currency":"USD","description":"C"}
+  {"statement_id":"chase_checking_1234_2026-02-28","account_key":"chase_checking_1234","posted_at":"2026-01-01","amount":-10.00,"currency":"USD","description":"A","external_id":"ext_1"},
+  {"statement_id":"chase_checking_1234_2026-02-28","account_key":"chase_checking_1234","posted_at":"2026-01-03","amount":-30.00,"currency":"USD","description":"C"},
+  {"statement_id":"chase_checking_1234_2026-02-28","account_key":"chase_checking_1234","posted_at":"2026-01-03","amount":-30.00,"currency":"USD","description":"C"}
 ]"#,
         );
         let second = run_import(&home, Some(&second_path), false, None);
@@ -755,6 +755,212 @@ fn explicit_statement_id_with_internal_prefix_is_preserved() {
             ),
             Some("gen_pending_import_manualscope".to_string())
         );
+    }
+}
+
+#[test]
+fn statement_id_reuse_across_imports_is_rejected() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let first_path = home.join("statement-reuse-first.json");
+        let second_path = home.join("statement-reuse-second.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &first_path,
+            r#"[
+  {"statement_id":"acct_reuse_1_2026-05-31","account_key":"acct_reuse_1","posted_at":"2026-05-01","amount":-10.00,"currency":"USD","description":"FIRST-STATEMENT-ROW"}
+]"#,
+        );
+        write_file(
+            &second_path,
+            r#"[
+  {"statement_id":"acct_reuse_1_2026-05-31","account_key":"acct_reuse_1","posted_at":"2026-05-02","amount":-20.00,"currency":"USD","description":"REUSED-STATEMENT-ROW"}
+]"#,
+        );
+
+        let first = run_import(&home, Some(&first_path), false, None);
+        assert!(first.is_ok());
+
+        let second = run_import(&home, Some(&second_path), false, None);
+        assert!(second.is_err());
+        if let Err(error) = second {
+            assert_eq!(error.code, "import_validation_failed");
+            let envelope = failure_from_error(&error);
+            let as_json = serde_json::to_value(envelope);
+            assert!(as_json.is_ok());
+            if let Ok(value) = as_json {
+                assert_eq!(
+                    value["error"]["data"]["summary"]["rows_read"],
+                    Value::from(1)
+                );
+                assert_eq!(
+                    value["error"]["data"]["summary"]["rows_valid"],
+                    Value::from(0)
+                );
+                assert_eq!(
+                    value["error"]["data"]["summary"]["rows_invalid"],
+                    Value::from(1)
+                );
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["field"],
+                    Value::String("statement_id".to_string())
+                );
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["code"],
+                    Value::String("statement_id_reused".to_string())
+                );
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["received"],
+                    Value::String("acct_reuse_1_2026-05-31".to_string())
+                );
+            }
+        }
+
+        let db_path = home.join("ledger.db");
+        assert_eq!(
+            query_count(&db_path, "SELECT COUNT(*) FROM internal_transactions"),
+            1
+        );
+        assert_eq!(
+            query_count(&db_path, "SELECT COUNT(*) FROM internal_import_runs"),
+            1
+        );
+    }
+}
+
+#[test]
+fn dry_run_statement_id_reuse_is_rejected() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("statement-reuse-dry-run.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &source_path,
+            r#"[
+  {"statement_id":"acct_reuse_2_2026-05-31","account_key":"acct_reuse_2","posted_at":"2026-05-01","amount":-10.00,"currency":"USD","description":"ROW-1"}
+]"#,
+        );
+
+        let first = run_import(&home, Some(&source_path), false, None);
+        assert!(first.is_ok());
+
+        let dry_run = run_import(&home, Some(&source_path), true, None);
+        assert!(dry_run.is_err());
+        if let Err(error) = dry_run {
+            assert_eq!(error.code, "import_validation_failed");
+            let envelope = failure_from_error(&error);
+            let as_json = serde_json::to_value(envelope);
+            assert!(as_json.is_ok());
+            if let Ok(value) = as_json {
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["code"],
+                    Value::String("statement_id_reused".to_string())
+                );
+            }
+        }
+
+        let db_path = home.join("ledger.db");
+        assert_eq!(
+            query_count(&db_path, "SELECT COUNT(*) FROM internal_transactions"),
+            1
+        );
+        assert_eq!(
+            query_count(&db_path, "SELECT COUNT(*) FROM internal_import_runs"),
+            1
+        );
+    }
+}
+
+#[test]
+fn statement_id_reuse_check_is_scoped_by_account_key() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let first_path = home.join("statement-same-id-account-a.json");
+        let second_path = home.join("statement-same-id-account-b.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &first_path,
+            r#"[
+  {"statement_id":"shared_statement_2026-05-31","account_key":"acct_scope_a","posted_at":"2026-05-01","amount":-10.00,"currency":"USD","description":"SCOPE-A"}
+]"#,
+        );
+        write_file(
+            &second_path,
+            r#"[
+  {"statement_id":"shared_statement_2026-05-31","account_key":"acct_scope_b","posted_at":"2026-05-01","amount":-10.00,"currency":"USD","description":"SCOPE-B"}
+]"#,
+        );
+
+        let first = run_import(&home, Some(&first_path), false, None);
+        assert!(first.is_ok());
+        let second = run_import(&home, Some(&second_path), false, None);
+        assert!(second.is_ok());
+        if let Ok(success) = second {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                assert_eq!(value["data"]["summary"]["inserted"], Value::from(1));
+                assert_eq!(value["data"]["duplicate_summary"]["total"], Value::from(0));
+            }
+        }
+
+        let db_path = home.join("ledger.db");
+        assert_eq!(
+            query_count(&db_path, "SELECT COUNT(*) FROM internal_transactions"),
+            2
+        );
+    }
+}
+
+#[test]
+fn statement_id_is_trimmed_before_reuse_validation() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let first_path = home.join("statement-trim-first.json");
+        let second_path = home.join("statement-trim-second.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &first_path,
+            r#"[
+  {"statement_id":"acct_trim_1_2026-05-31","account_key":"acct_trim_1","posted_at":"2026-05-01","amount":-10.00,"currency":"USD","description":"TRIM-FIRST"}
+]"#,
+        );
+        write_file(
+            &second_path,
+            r#"[
+  {"statement_id":"  acct_trim_1_2026-05-31  ","account_key":"acct_trim_1","posted_at":"2026-05-02","amount":-20.00,"currency":"USD","description":"TRIM-SECOND"}
+]"#,
+        );
+
+        let first = run_import(&home, Some(&first_path), false, None);
+        assert!(first.is_ok());
+
+        let second = run_import(&home, Some(&second_path), false, None);
+        assert!(second.is_err());
+        if let Err(error) = second {
+            assert_eq!(error.code, "import_validation_failed");
+            let envelope = failure_from_error(&error);
+            let as_json = serde_json::to_value(envelope);
+            assert!(as_json.is_ok());
+            if let Ok(value) = as_json {
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["code"],
+                    Value::String("statement_id_reused".to_string())
+                );
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["received"],
+                    Value::String("acct_trim_1_2026-05-31".to_string())
+                );
+            }
+        }
     }
 }
 
@@ -1027,7 +1233,7 @@ fn list_history_returns_committed_and_reverted() {
         write_file(
             &second_path,
             r#"[
-  {"statement_id":"chase_checking_1234_2026-01-31","account_key":"chase_checking_1234","posted_at":"2026-02-02","amount":-20.00,"currency":"USD","description":"SECOND"}
+  {"statement_id":"chase_checking_1234_2026-02-28","account_key":"chase_checking_1234","posted_at":"2026-02-02","amount":-20.00,"currency":"USD","description":"SECOND"}
 ]"#,
         );
 

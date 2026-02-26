@@ -127,6 +127,7 @@ Field rules (very explicit):
     Statement grouping key when you have statement boundaries.
     Use `statement_id` = `<account_key>_<statement_end_YYYY-MM-DD>` when available.
     Never reuse the same `statement_id` across different imports/statements.
+    Imports with reused provided `statement_id` values are rejected.
     Example: `chase_checking_1234_2026-01-31`
 
   external_id (optional):
