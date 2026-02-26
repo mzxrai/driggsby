@@ -1541,3 +1541,101 @@ fn duplicates_report_live_and_historical_match_pointers_after_promotion() {
         }
     }
 }
+
+#[test]
+fn duplicates_fallback_resolves_null_statement_id_using_dedupe_scope() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let winner_path = home.join("winner-null-statement-fallback.json");
+        let candidate_path = home.join("candidate-null-statement-fallback.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+
+        write_file(
+            &winner_path,
+            r#"[
+  {"account_key":"acct_live_2","posted_at":"2026-12-10","amount":-19.00,"currency":"USD","description":"NULL-STMT-FALLBACK"}
+]"#,
+        );
+        write_file(
+            &candidate_path,
+            r#"[
+  {"account_key":"acct_live_2","posted_at":"2026-12-10","amount":-19.00,"currency":"USD","description":"NULL-STMT-FALLBACK"}
+]"#,
+        );
+
+        let first_result = run_import(&home, Some(&winner_path), false, None);
+        assert!(first_result.is_ok());
+        let second_result = run_import(&home, Some(&candidate_path), false, None);
+        assert!(second_result.is_ok());
+
+        let mut first_import_id = None;
+        let mut second_import_id = None;
+        if let Ok(success) = first_result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                first_import_id = extract_import_id(&value);
+            }
+        }
+        if let Ok(success) = second_result {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                second_import_id = extract_import_id(&value);
+            }
+        }
+
+        assert!(first_import_id.is_some());
+        assert!(second_import_id.is_some());
+
+        let db_path = home.join("ledger.db");
+        let first_live_txn_id = query_optional_string(
+            &db_path,
+            "SELECT txn_id
+             FROM internal_transactions
+             WHERE description = 'NULL-STMT-FALLBACK'
+             ORDER BY txn_id ASC
+             LIMIT 1",
+        );
+        assert!(first_live_txn_id.is_some());
+
+        if let Some(second_id) = second_import_id.as_deref() {
+            let rewired = execute_sql(
+                &db_path,
+                &format!(
+                    "UPDATE internal_transaction_dedupe_candidates
+                     SET matched_txn_id = 'txn_missing',
+                         matched_import_id = 'imp_missing',
+                         promoted_txn_id = NULL
+                     WHERE import_id = '{second_id}'"
+                ),
+            );
+            assert!(rewired);
+
+            let duplicates = run_import_duplicates(&home, second_id);
+            assert!(duplicates.is_ok());
+            if let Ok(success) = duplicates {
+                let payload = serde_json::to_value(success);
+                assert!(payload.is_ok());
+                if let Ok(value) = payload {
+                    assert_eq!(value["data"]["total"], Value::from(1));
+                    assert!(value["data"]["rows"][0]["statement_id"].is_null());
+                    assert_eq!(
+                        value["data"]["rows"][0]["matched_txn_id"],
+                        Value::String(first_live_txn_id.unwrap_or_default())
+                    );
+                    assert_eq!(
+                        value["data"]["rows"][0]["matched_import_id"],
+                        Value::String(first_import_id.unwrap_or_default())
+                    );
+                    assert_eq!(
+                        value["data"]["rows"][0]["matched_txn_id_at_dedupe"],
+                        Value::String("txn_missing".to_string())
+                    );
+                }
+            }
+        }
+    }
+}

@@ -580,6 +580,25 @@ fn import_create_json_schema_mismatch_error_uses_nested_error_data() {
 }
 
 #[test]
+fn import_create_plaintext_schema_mismatch_includes_header_guidance() {
+    let home = unique_test_home();
+    let source_path = write_source_file(
+        &home,
+        "schema-mismatch-plaintext.csv",
+        "account,posted_date,amount_usd,description\nx,2026-01-01,-1.00,Test\n",
+    );
+    let source_arg = source_path.display().to_string();
+    let (ok, body) =
+        run_cli_in_home_with_input(&home, &["import", "create", "--dry-run", &source_arg], None);
+    assert!(!ok);
+    assert!(body.contains("Error:    import_schema_mismatch"));
+    assert!(body.contains("Required headers:"));
+    assert!(body.contains("Optional headers:"));
+    assert!(body.contains("Your CSV headers:"));
+    assert!(body.contains("account, posted_date, amount_usd, description"));
+}
+
+#[test]
 fn import_duplicates_plaintext_and_json_contracts_are_supported() {
     let home = unique_test_home();
     let source_path = write_source_file(

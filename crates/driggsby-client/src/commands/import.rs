@@ -232,7 +232,7 @@ pub fn duplicates_with_options(
                          AND t.amount = c.amount
                          AND t.currency = c.currency
                          AND t.description = c.description
-                         AND t.statement_id != c.statement_id)
+                         AND t.dedupe_scope_id != c.dedupe_scope_id)
                       )
                     ORDER BY t.txn_id ASC
                     LIMIT 1

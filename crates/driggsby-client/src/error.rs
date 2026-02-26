@@ -83,17 +83,45 @@ impl ClientError {
     ) -> Self {
         let mut expected_headers = required_headers.clone();
         expected_headers.extend(optional_headers.clone());
+        let missing_required_headers: Vec<String> = required_headers
+            .iter()
+            .filter(|header| !actual_headers.contains(header))
+            .cloned()
+            .collect();
+        let unknown_headers: Vec<String> = actual_headers
+            .iter()
+            .filter(|header| {
+                !required_headers.contains(header) && !optional_headers.contains(header)
+            })
+            .cloned()
+            .collect();
+        let mut recovery_steps = vec![
+            format!("Required headers: {}", required_headers.join(", ")),
+            format!("Optional headers: {}", optional_headers.join(", ")),
+            format!("Your CSV headers: {}", actual_headers.join(", ")),
+        ];
+        if !missing_required_headers.is_empty() {
+            recovery_steps.push(format!(
+                "Missing required headers in your CSV: {}",
+                missing_required_headers.join(", ")
+            ));
+        }
+        if !unknown_headers.is_empty() {
+            recovery_steps.push(format!(
+                "Unknown headers in your CSV: {}",
+                unknown_headers.join(", ")
+            ));
+        }
+        recovery_steps.push(
+            "Run `driggsby import create --help` to review required and optional fields."
+                .to_string(),
+        );
+        recovery_steps.push("Rerun `driggsby import create --dry-run <path>`.".to_string());
 
         Self::new(
             "import_schema_mismatch",
             "CSV headers do not satisfy the import schema.",
-            vec![
-                "Include all required headers; optional headers may be omitted.".to_string(),
-                "Do not include unknown headers.".to_string(),
-                "Run `driggsby import create --help` to review required and optional fields."
-                    .to_string(),
-                "Rerun `driggsby import create --dry-run <path>`.".to_string(),
-            ],
+            recovery_steps,
         )
         .with_import_help_data(json!({
             "required_headers": required_headers,
