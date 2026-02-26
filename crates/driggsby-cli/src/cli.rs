@@ -83,6 +83,17 @@ Import schema:
       \"external_id\": \"txn_12345\",
       \"merchant\": \"Whole Foods\",
       \"category\": \"Groceries\"
+    },
+    {
+      \"account_key\": \"chase_checking_1234\",
+      \"posted_at\": \"2026-01-16\",
+      \"amount\": 42.15,
+      \"currency\": \"USD\",
+      \"description\": \"REFUND\",
+      \"statement_id\": \"chase_checking_1234_2026-01-31\",
+      \"external_id\": \"txn_12346\",
+      \"merchant\": \"Whole Foods\",
+      \"category\": \"Groceries\"
     }
   ]
 
