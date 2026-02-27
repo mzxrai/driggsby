@@ -5,6 +5,7 @@ use crate::intelligence::date::CadenceKind;
 /// This is emitted with recurring results so future threshold changes remain
 /// auditable and easy to reason about in diffs and support/debug sessions.
 pub const RECURRING_POLICY_VERSION: &str = "recurring/v1";
+pub const ANOMALIES_POLICY_VERSION: &str = "anomalies/v1";
 
 /// v1 recurring classifier policy.
 ///
@@ -82,6 +83,25 @@ pub const RECURRING_POLICY_V1: RecurringPolicy = RecurringPolicy {
     min_score: 0.78,
     amount_tolerance_ratio: 0.15,
     amount_tolerance_floor: 1.00,
+};
+
+#[derive(Debug, Clone, Copy)]
+pub struct AnomaliesPolicy {
+    pub min_history_points: usize,
+    pub min_spike_ratio: f64,
+    pub min_score: f64,
+    pub mad_multiplier: f64,
+    pub absolute_floor: f64,
+    pub relative_floor: f64,
+}
+
+pub const ANOMALIES_POLICY_V1: AnomaliesPolicy = AnomaliesPolicy {
+    min_history_points: 6,
+    min_spike_ratio: 2.2,
+    min_score: 0.82,
+    mad_multiplier: 3.0,
+    absolute_floor: 15.0,
+    relative_floor: 0.45,
 };
 
 #[cfg(test)]

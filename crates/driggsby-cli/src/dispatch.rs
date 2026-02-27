@@ -3,7 +3,7 @@ use driggsby_client::{ClientResult, SuccessEnvelope};
 
 use crate::cli::{
     AccountCommand, Cli, Commands, DbCommand, DemoCommand, ImportCommand, ImportKeysCommand,
-    SchemaCommand,
+    IntelligenceCommand, SchemaCommand,
 };
 
 pub fn dispatch(cli: &Cli) -> ClientResult<SuccessEnvelope> {
@@ -32,6 +32,9 @@ pub fn dispatch(cli: &Cli) -> ClientResult<SuccessEnvelope> {
                 }
             },
             ImportCommand::Undo { import_id, .. } => commands::import::undo(import_id),
+        },
+        Commands::Intelligence { command } => match command {
+            IntelligenceCommand::Refresh { .. } => commands::intelligence::refresh(),
         },
         Commands::Demo { command } => {
             let topic = demo_command_to_str(command);

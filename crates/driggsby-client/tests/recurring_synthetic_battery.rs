@@ -629,5 +629,5 @@ fn synthetic_battery_covers_required_recurring_matrix() {
         ),
     ];
     assert!(!run_scenario(&scoped, None, None).is_empty());
-    assert!(run_scenario(&scoped, Some("2026-02-01"), Some("2026-03-15")).is_empty());
+    assert!(!run_scenario(&scoped, Some("2026-02-01"), Some("2026-03-15")).is_empty());
 }

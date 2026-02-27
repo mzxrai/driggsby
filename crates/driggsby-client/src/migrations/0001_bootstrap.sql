@@ -73,15 +73,30 @@ CREATE TABLE IF NOT EXISTS internal_transaction_dedupe_candidates (
 );
 
 CREATE TABLE IF NOT EXISTS internal_recurring_materialized (
-    merchant TEXT,
+    group_key TEXT PRIMARY KEY,
+    account_key TEXT NOT NULL,
+    merchant TEXT NOT NULL,
+    cadence TEXT NOT NULL,
     typical_amount REAL NOT NULL,
-    cadence TEXT NOT NULL
+    currency TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    next_expected_at TEXT,
+    occurrence_count INTEGER NOT NULL,
+    score REAL NOT NULL,
+    is_active INTEGER NOT NULL CHECK (is_active IN (0, 1))
 );
 
 CREATE TABLE IF NOT EXISTS internal_anomalies_materialized (
+    txn_id TEXT PRIMARY KEY,
+    account_key TEXT NOT NULL,
     posted_at TEXT NOT NULL,
+    merchant TEXT NOT NULL,
     amount REAL NOT NULL,
-    reason TEXT NOT NULL
+    currency TEXT NOT NULL,
+    reason_code TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    score REAL NOT NULL,
+    severity TEXT NOT NULL
 );
 
 INSERT OR IGNORE INTO internal_meta (key, value) VALUES ('schema_version', 'v1');
@@ -143,18 +158,33 @@ FROM internal_import_runs;
 -- driggsby:safe_repair:start:v1_recurring
 CREATE VIEW v1_recurring AS
 SELECT
+    group_key,
+    account_key,
     merchant,
+    cadence,
     typical_amount,
-    cadence
+    currency,
+    last_seen_at,
+    next_expected_at,
+    occurrence_count,
+    score,
+    is_active
 FROM internal_recurring_materialized;
 -- driggsby:safe_repair:end:v1_recurring
 
 -- driggsby:safe_repair:start:v1_anomalies
 CREATE VIEW v1_anomalies AS
 SELECT
+    txn_id,
+    account_key,
     posted_at,
+    merchant,
     amount,
-    reason
+    currency,
+    reason_code,
+    reason,
+    score,
+    severity
 FROM internal_anomalies_materialized;
 -- driggsby:safe_repair:end:v1_anomalies
 
@@ -202,3 +232,13 @@ ON internal_import_account_stats(import_id);
 CREATE INDEX idx_internal_import_account_stats_account_key
 ON internal_import_account_stats(account_key);
 -- driggsby:safe_repair:end:idx_internal_import_account_stats_account_key
+
+-- driggsby:safe_repair:start:idx_internal_recurring_materialized_last_seen_at
+CREATE INDEX idx_internal_recurring_materialized_last_seen_at
+ON internal_recurring_materialized(last_seen_at);
+-- driggsby:safe_repair:end:idx_internal_recurring_materialized_last_seen_at
+
+-- driggsby:safe_repair:start:idx_internal_anomalies_materialized_posted_at
+CREATE INDEX idx_internal_anomalies_materialized_posted_at
+ON internal_anomalies_materialized(posted_at);
+-- driggsby:safe_repair:end:idx_internal_anomalies_materialized_posted_at

@@ -4,6 +4,7 @@ pub(crate) mod common;
 pub mod dash;
 pub mod demo;
 pub mod import;
+pub mod intelligence;
 pub mod recurring;
 pub mod schema;
 pub mod sql;

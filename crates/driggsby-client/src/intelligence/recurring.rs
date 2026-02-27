@@ -368,6 +368,7 @@ mod tests {
         let parsed = NaiveDate::parse_from_str(date, "%Y-%m-%d");
         assert!(parsed.is_ok());
         NormalizedTransaction {
+            txn_id: format!("txn_{account_key}_{date}_{amount:.2}"),
             account_key: account_key.to_string(),
             posted_at: parsed.unwrap_or(NaiveDate::MIN),
             amount,

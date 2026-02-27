@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use rusqlite::params;
+use rusqlite::{Connection, params};
 
 use crate::ClientResult;
 use crate::intelligence::date::{format_iso_date, parse_transaction_date};
@@ -12,9 +12,18 @@ pub fn load_transactions(
     filter: &IntelligenceFilter,
 ) -> ClientResult<Vec<NormalizedTransaction>> {
     let connection = open_connection(db_path)?;
+    load_transactions_from_connection(&connection, db_path, filter)
+}
+
+pub fn load_transactions_from_connection(
+    connection: &Connection,
+    db_path: &Path,
+    filter: &IntelligenceFilter,
+) -> ClientResult<Vec<NormalizedTransaction>> {
     let mut statement = connection
         .prepare(
             "SELECT
+                txn_id,
                 account_key,
                 posted_at,
                 amount,
@@ -34,13 +43,15 @@ pub fn load_transactions(
 
     let rows_iter = statement
         .query_map(params![from_bound, to_bound], |row| {
-            let account_key: String = row.get(0)?;
-            let posted_at: String = row.get(1)?;
-            let amount: f64 = row.get(2)?;
-            let currency: String = row.get(3)?;
-            let description: String = row.get(4)?;
-            let merchant: Option<String> = row.get(5)?;
+            let txn_id: String = row.get(0)?;
+            let account_key: String = row.get(1)?;
+            let posted_at: String = row.get(2)?;
+            let amount: f64 = row.get(3)?;
+            let currency: String = row.get(4)?;
+            let description: String = row.get(5)?;
+            let merchant: Option<String> = row.get(6)?;
             Ok((
+                txn_id,
                 account_key,
                 posted_at,
                 amount,
@@ -53,7 +64,7 @@ pub fn load_transactions(
 
     let mut rows: Vec<NormalizedTransaction> = Vec::new();
     for row in rows_iter {
-        let (account_key, posted_at, amount, currency, description, merchant) =
+        let (txn_id, account_key, posted_at, amount, currency, description, merchant) =
             row.map_err(|error| map_sqlite_error(db_path, &error))?;
         if amount == 0.0 {
             continue;
@@ -63,6 +74,7 @@ pub fn load_transactions(
         };
 
         rows.push(NormalizedTransaction {
+            txn_id,
             account_key,
             posted_at: parsed_date,
             amount,

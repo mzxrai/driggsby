@@ -7,6 +7,7 @@ use ulid::Ulid;
 use crate::import::CanonicalTransaction;
 use crate::import::dedupe::{dedupe_key, find_existing_match};
 use crate::import::persist::now_timestamp;
+use crate::intelligence::refresh::refresh_all_in_transaction;
 use crate::state::map_sqlite_error;
 use crate::{ClientError, ClientResult};
 
@@ -15,6 +16,7 @@ pub(crate) struct UndoResult {
     pub(crate) import_id: String,
     pub(crate) rows_reverted: i64,
     pub(crate) rows_promoted: i64,
+    pub(crate) intelligence_refreshed: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +104,7 @@ pub(crate) fn undo_import(
     }
 
     reconcile_account_metadata_for_undo(&transaction, db_path, &touched_account_keys)?;
+    refresh_all_in_transaction(&transaction, db_path)?;
 
     transaction
         .commit()
@@ -111,6 +114,7 @@ pub(crate) fn undo_import(
         import_id: import_id.to_string(),
         rows_reverted,
         rows_promoted,
+        intelligence_refreshed: true,
     })
 }
 

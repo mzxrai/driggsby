@@ -315,13 +315,17 @@ pub struct ImportUndoData {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct IntelligenceRow {
-    pub id: String,
+pub struct AnomalyRow {
+    pub txn_id: String,
+    pub account_key: String,
     pub posted_at: String,
     pub merchant: String,
     pub amount: f64,
     pub currency: String,
-    pub note: String,
+    pub reason_code: String,
+    pub reason: String,
+    pub score: f64,
+    pub severity: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -331,10 +335,11 @@ pub struct DataRangeHint {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct IntelligenceData {
+pub struct AnomaliesData {
+    pub policy_version: String,
     pub from: Option<String>,
     pub to: Option<String>,
-    pub rows: Vec<IntelligenceRow>,
+    pub rows: Vec<AnomalyRow>,
     pub data_range_hint: DataRangeHint,
 }
 
@@ -343,23 +348,14 @@ pub struct RecurringRow {
     pub group_key: String,
     pub account_key: String,
     pub merchant: String,
-    pub counterparty: String,
-    pub counterparty_source: String,
     pub cadence: String,
     pub typical_amount: f64,
     pub currency: String,
-    pub first_seen_at: String,
     pub last_seen_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_expected_at: Option<String>,
     pub occurrence_count: i64,
-    pub cadence_fit: f64,
-    pub amount_fit: f64,
     pub score: f64,
-    pub amount_min: f64,
-    pub amount_max: f64,
-    pub sample_description: String,
-    pub quality_flags: Vec<String>,
     pub is_active: bool,
 }
 
@@ -370,6 +366,13 @@ pub struct RecurringData {
     pub to: Option<String>,
     pub rows: Vec<RecurringRow>,
     pub data_range_hint: DataRangeHint,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IntelligenceRefreshData {
+    pub recurring_rows: i64,
+    pub anomaly_rows: i64,
+    pub completed_at: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

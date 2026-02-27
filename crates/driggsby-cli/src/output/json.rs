@@ -17,6 +17,7 @@ pub fn render_success_json(success: &SuccessEnvelope) -> io::Result<String> {
         "import duplicates" => render_import_duplicates_json(&success.data),
         "import keys uniq" => render_import_keys_uniq_json(&success.data),
         "import undo" => render_import_undo_json(&success.data),
+        "intelligence refresh" => render_intelligence_refresh_json(&success.data),
         "db sql" => render_db_sql_json(&success.data),
         "anomalies" => render_anomalies_json(&success.data),
         "recurring" => render_recurring_json(&success.data),
@@ -83,6 +84,10 @@ fn render_import_undo_json(data: &Value) -> Value {
     render_edit_success_envelope(data)
 }
 
+fn render_intelligence_refresh_json(data: &Value) -> Value {
+    render_edit_success_envelope(data)
+}
+
 fn render_import_duplicates_json(data: &Value) -> Value {
     data.clone()
 }
@@ -118,6 +123,7 @@ fn render_anomalies_json(data: &Value) -> Value {
     });
 
     json!({
+        "policy_version": data.get("policy_version").cloned().unwrap_or(Value::Null),
         "from": data.get("from").cloned().unwrap_or(Value::Null),
         "to": data.get("to").cloned().unwrap_or(Value::Null),
         "data_covers": data_covers,

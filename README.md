@@ -21,8 +21,8 @@ Implemented and usable now:
 - Account orientation command:
   - `account list`
 - Schema discovery commands:
-  - `schema`
-  - `schema view <name>`
+  - `db schema`
+  - `db schema view <name>`
 - Dashboard/demo URL commands:
   - `dash`
   - `demo dash`
@@ -30,13 +30,14 @@ Implemented and usable now:
   - `demo anomalies`
   - these commands currently return local URLs (default `http://127.0.0.1:8787...`) and assume a dashboard runtime is available there
 
-Partially implemented (wired, but still early):
-- `anomalies` command surface exists, but core anomaly detection logic is still placeholder-level.
-
 Implemented intelligence command:
-- `recurring` now computes deterministic recurring classifications from imported transactions
-- policy is explicit and versioned (`policy_version: "recurring/v1"`)
-- recurring rows include auditable evidence fields (`cadence_fit`, `amount_fit`, `score`, `occurrence_count`, `next_expected_at`, etc.)
+- `recurring` and `anomalies` are SQL-backed intelligence commands
+- both commands read from materialized intelligence tables/views (`v1_recurring`, `v1_anomalies`)
+- intelligence materialization refreshes automatically on committed `import create` and successful `import undo`
+- hidden maintenance escape hatch is available: `driggsby intelligence refresh`
+- policy versions are explicit (`recurring/v1`, `anomalies/v1`)
+- recurring rows are intentionally concise (`group_key`, `merchant`, cadence/amount/timing/score fields)
+- anomaly rows are intentionally concise (`txn_id`, timing, amount, reason, severity, score fields)
 
 ## Quick Start
 
@@ -57,7 +58,7 @@ driggsby --help
 
 ```bash
 # Show local DB path + semantic query contract
-driggsby schema
+driggsby db schema
 
 # Read the import contract and examples
 driggsby import create --help
@@ -70,6 +71,9 @@ driggsby import create /path/to/normalized.json
 
 # Verify ledger orientation
 driggsby account list
+
+# Optional maintenance: force intelligence rebuild
+driggsby intelligence refresh
 ```
 
 ## Import Contract (Normalized Input)

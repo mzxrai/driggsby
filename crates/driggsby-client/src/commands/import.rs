@@ -373,7 +373,7 @@ pub fn undo_with_options(
                 rows_reverted: result.rows_reverted,
                 rows_promoted: result.rows_promoted,
             },
-            intelligence_refreshed: false,
+            intelligence_refreshed: result.intelligence_refreshed,
         },
     )
 }

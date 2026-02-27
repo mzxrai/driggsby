@@ -1,4 +1,6 @@
-use crate::cli::{AccountCommand, Commands, DbCommand, ImportCommand, ImportKeysCommand};
+use crate::cli::{
+    AccountCommand, Commands, DbCommand, ImportCommand, ImportKeysCommand, IntelligenceCommand,
+};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum OutputMode {
@@ -25,6 +27,15 @@ pub fn mode_for_command(command: &Commands) -> OutputMode {
                 command: ImportKeysCommand::Uniq { json, .. },
             }
             | ImportCommand::Undo { json, .. } => {
+                if *json {
+                    OutputMode::Json
+                } else {
+                    OutputMode::Text
+                }
+            }
+        },
+        Commands::Intelligence { command } => match command {
+            IntelligenceCommand::Refresh { json } => {
                 if *json {
                     OutputMode::Json
                 } else {
@@ -152,6 +163,15 @@ mod tests {
     #[test]
     fn mode_uses_json_for_db_sql_with_json_flag() {
         let parsed = parse_from(["driggsby", "db", "sql", "SELECT 1", "--json"]);
+        assert!(parsed.is_ok());
+        if let Ok(cli) = parsed {
+            assert_eq!(mode_for_command(&cli.command), OutputMode::Json);
+        }
+    }
+
+    #[test]
+    fn mode_uses_json_for_hidden_intelligence_refresh_with_json_flag() {
+        let parsed = parse_from(["driggsby", "intelligence", "refresh", "--json"]);
         assert!(parsed.is_ok());
         if let Ok(cli) = parsed {
             assert_eq!(mode_for_command(&cli.command), OutputMode::Json);
