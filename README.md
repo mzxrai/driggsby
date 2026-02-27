@@ -122,6 +122,17 @@ Public semantic views:
 - `v1_recurring`
 - `v1_anomalies`
 
+Local hardening defaults (Unix):
+- ledger home directory is enforced to `0700`
+- ledger database and sidecar files (`ledger.db`, `-wal`, `-shm`, `-journal`) are enforced to `0600` when present
+- writable SQLite connections enable:
+  - `PRAGMA foreign_keys = ON`
+  - `PRAGMA secure_delete = ON`
+
+Current limits:
+- ledger data is local-first but not encrypted at rest (SQLCipher is not enabled yet)
+- hardening behavior is OS-specific; permission mode values above apply to Unix systems
+
 ## Development
 
 Useful commands:

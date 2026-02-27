@@ -30,39 +30,39 @@ This phase fixes those gaps without introducing major architectural change.
 ## Goals and Acceptance Criteria
 
 - [ ] Ledger filesystem permissions are private by default on Unix.
-  - Acceptance: ledger home resolves to mode `0700`.
-  - Acceptance: `ledger.db` resolves to mode `0600`.
-  - Acceptance: sidecar files (`-wal`, `-shm`, `-journal`) are hardened to `0600` when present.
+  - [x] Acceptance: ledger home resolves to mode `0700`.
+  - [x] Acceptance: `ledger.db` resolves to mode `0600`.
+  - [x] Acceptance: sidecar files (`-wal`, `-shm`, `-journal`) are hardened to `0600` when present.
 
 - [ ] Permission hardening failures are surfaced clearly.
-  - Acceptance: failed permission hardening maps to deterministic ledger init permission errors.
+  - [x] Acceptance: failed permission hardening maps to deterministic ledger init permission errors.
 
 - [ ] SQLite writable connections apply low-churn safety defaults.
-  - Acceptance: writable `open_connection` enables `foreign_keys` and `secure_delete`.
+  - [x] Acceptance: writable `open_connection` enables `foreign_keys` and `secure_delete`.
 
 - [ ] Behavior is covered by focused tests.
-  - Acceptance: tests validate Unix mode hardening and PRAGMA behavior.
-  - Acceptance: tests remain deterministic and do not require broad fixture changes.
+  - [x] Acceptance: tests validate Unix mode hardening and PRAGMA behavior.
+  - [x] Acceptance: tests remain deterministic and do not require broad fixture changes.
 
 - [ ] Documentation is explicit and agent-friendly.
-  - Acceptance: README and `docs/security.md` describe local ledger hardening defaults and current limits.
+  - [x] Acceptance: README and `docs/security.md` describe local ledger hardening defaults and current limits.
 
 ## Scope
 
-- [ ] Update `crates/driggsby-client/src/state.rs` to:
-  - [ ] enforce and verify directory permissions on Unix (`0700`)
-  - [ ] enforce and verify database file/sidecar permissions on Unix (`0600`)
-  - [ ] surface hardening errors instead of ignoring them
-  - [ ] apply writable connection PRAGMAs (`foreign_keys=ON`, `secure_delete=ON`)
+- [x] Update `crates/driggsby-client/src/state.rs` to:
+  - [x] enforce and verify directory permissions on Unix (`0700`)
+  - [x] enforce and verify database file/sidecar permissions on Unix (`0600`)
+  - [x] surface hardening errors instead of ignoring them
+  - [x] apply writable connection PRAGMAs (`foreign_keys=ON`, `secure_delete=ON`)
 
-- [ ] Add/adjust tests under `crates/driggsby-client/tests/`:
-  - [ ] verify Unix ledger home + db mode expectations
-  - [ ] verify `secure_delete` is enabled on writable connections
-  - [ ] verify repeated initialization remains idempotent with hardening in place
+- [x] Add/adjust tests under `crates/driggsby-client/tests/`:
+  - [x] verify Unix ledger home + db mode expectations
+  - [x] verify `secure_delete` is enabled on writable connections
+  - [x] verify repeated initialization remains idempotent with hardening in place
 
-- [ ] Update docs:
-  - [ ] README local data model/security notes
-  - [ ] `docs/security.md` local ledger hardening section
+- [x] Update docs:
+  - [x] README local data model/security notes
+  - [x] `docs/security.md` local ledger hardening section
 
 ## Out of Scope
 
@@ -74,25 +74,29 @@ This phase fixes those gaps without introducing major architectural change.
 
 ### Step 1: Tests first (red)
 
-- [ ] add failing tests for Unix permission expectations
-- [ ] add failing test for `secure_delete` PRAGMA
+- [x] add failing tests for Unix permission expectations
+- [x] add failing test for `secure_delete` PRAGMA
 
 ### Step 2: Minimal implementation (green)
 
-- [ ] implement permission hardening and error handling in `state.rs`
-- [ ] implement PRAGMA setup in writable connection open path
+- [x] implement permission hardening and error handling in `state.rs`
+- [x] implement PRAGMA setup in writable connection open path
 
 ### Step 3: Verify
 
-- [ ] run targeted tests
-- [ ] run `just rust-verify`
+- [x] run targeted tests
+- [x] run `just rust-verify`
 
 ## Review and Closeout
 
-- [ ] perform final code review sweep for duplication/code smells
-- [ ] update this plan with completion checkboxes and executive summary
+- [x] perform final code review sweep for duplication/code smells
+- [x] update this plan with completion checkboxes and executive summary
 - [ ] commit with descriptive message and `Authored by:` footer
 
 ## Executive Summary
 
-- Pending implementation.
+- Hardened Unix ledger storage permissions in the client state layer and removed silent best-effort chmod behavior.
+- Added explicit file permission enforcement for `ledger.db` and SQLite sidecar files, plus explicit refusal of symlink ledger paths for safer permission handling.
+- Added writable connection PRAGMA hardening (`foreign_keys=ON`, `secure_delete=ON`) to reduce integrity and remanence risk with minimal churn.
+- Added focused setup tests for permission mode expectations and secure-delete behavior, keeping existing setup idempotence coverage intact.
+- Updated README and `docs/security.md` so agent and human users can discover what local hardening is applied and what remains out of scope (not encrypted at rest yet).
