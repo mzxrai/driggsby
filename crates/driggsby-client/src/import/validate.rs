@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use chrono::NaiveDate;
+
 use crate::contracts::types::{ImportIssue, ImportSummary};
 use crate::import::CanonicalTransaction;
 use crate::import::parse::ParsedRow;
@@ -194,6 +196,18 @@ fn validate_posted_at(
             field: "posted_at".to_string(),
             code: "invalid_date".to_string(),
             description: format!("posted_at must be YYYY-MM-DD; got \"{candidate}\""),
+            expected: Some("YYYY-MM-DD".to_string()),
+            received: Some(candidate),
+        });
+        return None;
+    }
+
+    if NaiveDate::parse_from_str(&candidate, "%Y-%m-%d").is_err() {
+        issues.push(ImportIssue {
+            row,
+            field: "posted_at".to_string(),
+            code: "invalid_date".to_string(),
+            description: format!("posted_at must use a real calendar date; got \"{candidate}\""),
             expected: Some("YYYY-MM-DD".to_string()),
             received: Some(candidate),
         });
@@ -484,11 +498,5 @@ fn looks_like_iso_date(value: &str) -> bool {
         }
     }
 
-    let month = value[5..7].parse::<u32>();
-    let day = value[8..10].parse::<u32>();
-    if let (Ok(m), Ok(d)) = (month, day) {
-        return m > 0 && m <= 12 && d > 0 && d <= 31;
-    }
-
-    false
+    true
 }

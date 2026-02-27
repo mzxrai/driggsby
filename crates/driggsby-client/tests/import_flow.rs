@@ -1067,6 +1067,48 @@ fn amount_with_more_than_two_decimals_fails_validation() {
 }
 
 #[test]
+fn invalid_calendar_posted_at_fails_import_validation() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("invalid-posted-at-calendar.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+        write_file(
+            &source_path,
+            r#"[
+  {"statement_id":"acct_calendar_2026-02-31","account_key":"acct_calendar","posted_at":"2026-02-31","amount":-12.34,"currency":"USD","description":"INVALID-CALENDAR-DATE"}
+]"#,
+        );
+
+        let result = run_import(&home, Some(&source_path), true, None);
+        assert!(result.is_err());
+        if let Err(error) = result {
+            assert_eq!(error.code, "import_validation_failed");
+            let envelope = failure_from_error(&error);
+            let as_json = serde_json::to_value(envelope);
+            assert!(as_json.is_ok());
+            if let Ok(value) = as_json {
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["field"],
+                    Value::String("posted_at".to_string())
+                );
+                assert_eq!(
+                    value["error"]["data"]["issues"][0]["code"],
+                    Value::String("invalid_date".to_string())
+                );
+                assert!(
+                    value["error"]["data"]["issues"][0]["description"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .contains("real calendar date")
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn amount_with_scientific_notation_over_two_decimals_fails_validation() {
     let temp = temp_home();
     assert!(temp.is_ok());

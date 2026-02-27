@@ -1023,9 +1023,78 @@ fn anomalies_and_recurring_json_use_structured_objects() {
     let (recurring_ok, recurring_body, _) = run_cli(&["recurring", "--json"]);
     assert!(recurring_ok);
     let recurring_payload = parse_json(&recurring_body);
+    assert_eq!(
+        recurring_payload["policy_version"],
+        Value::String("recurring/v1".to_string())
+    );
     assert!(recurring_payload["rows"].is_array());
+    assert!(recurring_payload["data_covers"].is_object());
+    assert!(recurring_payload["data_covers"]["from"].is_null());
+    assert!(recurring_payload["data_covers"]["to"].is_null());
     assert!(recurring_payload["from"].is_null());
     assert!(recurring_payload["to"].is_null());
+}
+
+#[test]
+fn recurring_outputs_non_empty_plaintext_and_rich_json_after_import() {
+    let home = unique_test_home();
+    let source = write_source_file(
+        &home,
+        "recurring-fixture.json",
+        r#"[
+  {"statement_id":"fixture_stmt_2026_01","account_key":"fixture_checking","posted_at":"2026-01-05","amount":-15.99,"currency":"USD","description":"NETFLIX MONTHLY MEMBERSHIP","merchant":"Netflix"},
+  {"statement_id":"fixture_stmt_2026_01","account_key":"fixture_checking","posted_at":"2026-02-05","amount":-15.99,"currency":"USD","description":"NETFLIX MONTHLY MEMBERSHIP","merchant":"Netflix"},
+  {"statement_id":"fixture_stmt_2026_01","account_key":"fixture_checking","posted_at":"2026-03-05","amount":-15.99,"currency":"USD","description":"NETFLIX MONTHLY MEMBERSHIP","merchant":"Netflix"}
+]"#,
+    );
+    let source_arg = source.display().to_string();
+
+    let (import_ok, import_body) =
+        run_cli_in_home_with_input(&home, &["import", "create", &source_arg, "--json"], None);
+    assert!(import_ok);
+    let import_payload = parse_json(&import_body);
+    assert_eq!(import_payload["ok"], Value::Bool(true));
+
+    let (text_ok, text_body) = run_cli_in_home_with_input(&home, &["recurring"], None);
+    assert!(text_ok);
+    assert!(text_body.contains("recurring patterns detected"));
+    assert!(text_body.contains("Patterns:"));
+    assert!(text_body.contains("NETFLIX"));
+
+    let (json_ok, json_body) = run_cli_in_home_with_input(&home, &["recurring", "--json"], None);
+    assert!(json_ok);
+    let payload = parse_json(&json_body);
+    assert_eq!(
+        payload["policy_version"],
+        Value::String("recurring/v1".to_string())
+    );
+    assert!(payload["rows"].is_array());
+    let rows_len = payload["rows"]
+        .as_array()
+        .map(|rows| rows.len())
+        .unwrap_or(0);
+    assert!(rows_len > 0);
+    let first = &payload["rows"][0];
+    assert!(first["group_key"].is_string());
+    assert!(first["account_key"].is_string());
+    assert!(first["merchant"].is_string());
+    assert!(first["counterparty"].is_string());
+    assert!(first["counterparty_source"].is_string());
+    assert!(first["cadence"].is_string());
+    assert!(first["typical_amount"].is_number());
+    assert!(first["currency"].is_string());
+    assert!(first["first_seen_at"].is_string());
+    assert!(first["last_seen_at"].is_string());
+    assert!(first["next_expected_at"].is_string() || first["next_expected_at"].is_null());
+    assert!(first["occurrence_count"].is_i64());
+    assert!(first["cadence_fit"].is_number());
+    assert!(first["amount_fit"].is_number());
+    assert!(first["score"].is_number());
+    assert!(first["amount_min"].is_number());
+    assert!(first["amount_max"].is_number());
+    assert!(first["sample_description"].is_string());
+    assert!(first["quality_flags"].is_array());
+    assert!(first["is_active"].is_boolean());
 }
 
 #[test]
@@ -1036,6 +1105,16 @@ fn parse_and_argument_errors_are_json_when_json_flag_is_present() {
     assert_eq!(
         parse_payload["error"]["data"]["command_hint"],
         Value::String("anomalies".to_string())
+    );
+
+    let (recurring_parse_ok, recurring_parse_body, _) =
+        run_cli(&["recurring", "--json", "--from", "2026-02-30"]);
+    assert!(!recurring_parse_ok);
+    let recurring_parse_payload =
+        assert_json_error_contract(&recurring_parse_body, "invalid_argument");
+    assert_eq!(
+        recurring_parse_payload["error"]["data"]["command_hint"],
+        Value::String("recurring".to_string())
     );
 
     let (arg_ok, arg_body, _) = run_cli(&["import", "create", "--json"]);

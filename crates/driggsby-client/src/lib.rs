@@ -2,6 +2,7 @@ pub mod commands;
 pub mod contracts;
 pub mod error;
 mod import;
+pub mod intelligence;
 pub mod migrations;
 pub mod setup;
 pub mod state;
