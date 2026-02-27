@@ -56,20 +56,18 @@ pub fn render_table_or_blocks(
         return render_blocks(columns, rows, block_label);
     }
 
-    let mut widths = natural_column_widths(columns, rows);
+    let natural = natural_column_widths(columns, rows);
+    let minimums = columns
+        .iter()
+        .map(|column| cmp::max(column.name.len(), MIN_TABLE_COLUMN_WIDTH))
+        .collect::<Vec<usize>>();
     let available = max_width.saturating_sub(INDENT);
     let gap_total = COLUMN_GAP * columns.len().saturating_sub(1);
-    let natural_total = widths.iter().sum::<usize>() + gap_total;
+    let budget = available.saturating_sub(gap_total);
 
-    if natural_total > available {
-        let per_column = available.saturating_sub(gap_total) / columns.len();
-        if per_column < MIN_TABLE_COLUMN_WIDTH {
-            return render_blocks(columns, rows, block_label);
-        }
-        for width in &mut widths {
-            *width = cmp::min(*width, per_column);
-        }
-    }
+    let Some(widths) = fit_widths_to_budget(&natural, &minimums, budget) else {
+        return render_blocks(columns, rows, block_label);
+    };
 
     let mut output = Vec::new();
     output.push(format_row(
@@ -124,6 +122,50 @@ fn natural_column_widths(columns: &[Column<'_>], rows: &[Vec<String>]) -> Vec<us
     }
 
     widths
+}
+
+fn fit_widths_to_budget(
+    natural: &[usize],
+    minimums: &[usize],
+    budget: usize,
+) -> Option<Vec<usize>> {
+    if natural.len() != minimums.len() {
+        return None;
+    }
+
+    let min_total = minimums.iter().sum::<usize>();
+    if min_total > budget {
+        return None;
+    }
+
+    let mut widths = natural.to_vec();
+    let mut total = widths.iter().sum::<usize>();
+    if total <= budget {
+        return Some(widths);
+    }
+
+    while total > budget {
+        let mut reduced = false;
+
+        for (index, width) in widths.iter_mut().enumerate() {
+            if total <= budget {
+                break;
+            }
+
+            let floor = *minimums.get(index).unwrap_or(&0);
+            if *width > floor {
+                *width -= 1;
+                total -= 1;
+                reduced = true;
+            }
+        }
+
+        if !reduced {
+            return None;
+        }
+    }
+
+    Some(widths)
 }
 
 fn wrap_row(row: &[String], widths: &[usize]) -> Vec<Vec<String>> {
@@ -208,16 +250,21 @@ fn split_long_token(token: &str, width: usize) -> Vec<String> {
     }
 
     let mut chunks = Vec::new();
-    let mut remaining = token;
+    let mut current = String::new();
+    let mut current_len = 0usize;
 
-    while remaining.len() > width {
-        let (head, tail) = remaining.split_at(width);
-        chunks.push(head.to_string());
-        remaining = tail;
+    for ch in token.chars() {
+        current.push(ch);
+        current_len += 1;
+
+        if current_len == width {
+            chunks.push(std::mem::take(&mut current));
+            current_len = 0;
+        }
     }
 
-    if !remaining.is_empty() {
-        chunks.push(remaining.to_string());
+    if !current.is_empty() {
+        chunks.push(current);
     }
 
     chunks
@@ -253,7 +300,10 @@ fn render_blocks(columns: &[Column<'_>], rows: &[Vec<String>], block_label: &str
 
 #[cfg(test)]
 mod tests {
-    use super::{Align, Column, key_value_rows, render_table_or_blocks};
+    use super::{
+        Align, Column, fit_widths_to_budget, key_value_rows, render_table_or_blocks,
+        split_long_token,
+    };
 
     #[test]
     fn key_value_rows_align_labels() {
@@ -267,6 +317,34 @@ mod tests {
 
         assert_eq!(rows[0], "  Rows read:     100");
         assert_eq!(rows[1], "  Rows invalid:  0");
+    }
+
+    #[test]
+    fn table_renderer_renders_expected_values_when_width_is_sufficient() {
+        let columns = [
+            Column {
+                name: "Merchant",
+                align: Align::Left,
+            },
+            Column {
+                name: "Amount",
+                align: Align::Right,
+            },
+        ];
+        let rows = vec![vec![
+            "VERY LONG MERCHANT NAME THAT MUST WRAP".to_string(),
+            "-1234.56 USD".to_string(),
+        ]];
+
+        let rendered = render_table_or_blocks(&columns, &rows, 80, "Row");
+        assert!(rendered[0].contains("Merchant"));
+        assert!(rendered[0].contains("Amount"));
+        assert!(
+            rendered
+                .iter()
+                .any(|line| line.contains("VERY LONG MERCHANT NAME THAT MUST WRAP"))
+        );
+        assert!(rendered.iter().any(|line| line.contains("-1234.56 USD")));
     }
 
     #[test]
@@ -289,9 +367,15 @@ mod tests {
         let rendered = render_table_or_blocks(&columns, &rows, 44, "Row");
         assert!(rendered[0].contains("Merchant"));
         assert!(rendered[0].contains("Amount"));
-        assert!(rendered[1].contains("VERY LONG MERCHANT"));
-        assert!(rendered.iter().any(|line| line.contains("THAT MUST WRAP")));
-        assert!(rendered.iter().any(|line| line.contains("-1234.56 USD")));
+        assert!(
+            rendered
+                .iter()
+                .any(|line| line.contains("VERY LONG MERCHANT"))
+        );
+        assert!(rendered.iter().any(|line| line.contains("THAT")));
+        assert!(rendered.iter().any(|line| line.contains("WRAP")));
+        assert!(rendered.iter().any(|line| line.contains("-1234.56")));
+        assert!(rendered.iter().any(|line| line.contains("USD")));
     }
 
     #[test]
@@ -321,5 +405,60 @@ mod tests {
         assert!(rendered[1].contains("Merchant:"));
         assert!(rendered[2].contains("Amount:"));
         assert!(rendered[3].contains("Reason:"));
+    }
+
+    #[test]
+    fn fit_widths_respects_column_name_minimums() {
+        let natural = [20, 12];
+        let minimums = [8, 10];
+
+        let fitted = fit_widths_to_budget(&natural, &minimums, 19);
+        assert!(fitted.is_some());
+        if let Some(widths) = fitted {
+            assert_eq!(widths, vec![9, 10]);
+        }
+    }
+
+    #[test]
+    fn table_renderer_falls_back_when_headers_cannot_fit() {
+        let columns = [
+            Column {
+                name: "import_id",
+                align: Align::Left,
+            },
+            Column {
+                name: "committed_at",
+                align: Align::Left,
+            },
+            Column {
+                name: "rows_invalid",
+                align: Align::Left,
+            },
+            Column {
+                name: "source_kind",
+                align: Align::Left,
+            },
+            Column {
+                name: "source_ref",
+                align: Align::Left,
+            },
+        ];
+        let rows = vec![vec![
+            "imp_01KJDDSDBMREJ6F5TG6D3H5PZN".to_string(),
+            "1772124681".to_string(),
+            "0".to_string(),
+            "file".to_string(),
+            "tmp/plan13-orchestrated-e2e/runs/run-plan13-rerun-after-plan14/scenarios/U-02/inputs/u02.json".to_string(),
+        ]];
+
+        let rendered = render_table_or_blocks(&columns, &rows, 54, "Row");
+        assert_eq!(rendered[0], "  Row 1:");
+        assert!(rendered.iter().any(|line| line.contains("source_ref:")));
+    }
+
+    #[test]
+    fn split_long_token_handles_unicode_without_panicking() {
+        let chunks = split_long_token("éééé", 3);
+        assert_eq!(chunks, vec!["ééé".to_string(), "é".to_string()]);
     }
 }
