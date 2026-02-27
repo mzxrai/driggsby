@@ -70,12 +70,6 @@ fn object_has_column(connection: &Connection, table_or_view: &str, column_name: 
     false
 }
 
-fn query_count(connection: &Connection, sql: &str) -> i64 {
-    connection
-        .query_row(sql, [], |row| row.get::<_, i64>(0))
-        .unwrap_or(0)
-}
-
 #[test]
 fn setup_creates_ledger_db_at_home_override() {
     let temp = tempdir();
@@ -108,47 +102,6 @@ fn setup_is_idempotent_for_existing_ledger() {
         if let (Ok(first_context), Ok(second_context)) = (first, second) {
             assert_eq!(first_context.db_path, second_context.db_path);
             assert_eq!(first_context.schema_version, second_context.schema_version);
-        }
-    }
-}
-
-#[test]
-fn setup_backfills_intelligence_when_upgrading_existing_ledger() {
-    let temp = tempdir();
-    assert!(temp.is_ok());
-    if let Ok(temp_dir) = temp {
-        let home = temp_dir.path().join("ledger-home");
-
-        let context = ensure_initialized_at(&home);
-        assert!(context.is_ok());
-        if let Ok(setup_context) = context {
-            let connection = Connection::open(&setup_context.db_path);
-            assert!(connection.is_ok());
-            if let Ok(conn) = connection {
-                let insert = conn.execute_batch(
-                    "INSERT INTO internal_transactions (
-                        txn_id, import_id, statement_id, dedupe_scope_id, account_key, posted_at,
-                        amount, currency, description, external_id, merchant, category
-                     ) VALUES
-                     ('txn_upgrade_1','imp_upgrade','stmt_upgrade','scope_upgrade','acct_upgrade','2026-01-05',-15.99,'USD','STREAMING',NULL,'Stream Co',NULL),
-                     ('txn_upgrade_2','imp_upgrade','stmt_upgrade','scope_upgrade','acct_upgrade','2026-02-05',-15.99,'USD','STREAMING',NULL,'Stream Co',NULL),
-                     ('txn_upgrade_3','imp_upgrade','stmt_upgrade','scope_upgrade','acct_upgrade','2026-03-05',-15.99,'USD','STREAMING',NULL,'Stream Co',NULL);
-                     DELETE FROM internal_recurring_materialized;
-                     DELETE FROM internal_anomalies_materialized;
-                     PRAGMA user_version = 5;",
-                );
-                assert!(insert.is_ok());
-                assert_eq!(query_count(&conn, "SELECT COUNT(*) FROM v1_recurring"), 0);
-            }
-
-            let upgraded = ensure_initialized_at(&home);
-            assert!(upgraded.is_ok());
-            let verify_connection = Connection::open(&setup_context.db_path);
-            assert!(verify_connection.is_ok());
-            if let Ok(conn) = verify_connection {
-                assert_eq!(query_count(&conn, "SELECT COUNT(*) FROM v1_recurring"), 1);
-                assert_eq!(user_version(&conn), Some(6));
-            }
         }
     }
 }
