@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,14 +26,7 @@ pub fn parse_iso_date(value: &str) -> Result<IsoDate, String> {
         }
     }
 
-    let month = value[5..7]
-        .parse::<u32>()
-        .map_err(|_| "date must use YYYY-MM-DD format".to_string())?;
-    let day = value[8..10]
-        .parse::<u32>()
-        .map_err(|_| "date must use YYYY-MM-DD format".to_string())?;
-
-    if month == 0 || month > 12 || day == 0 || day > 31 {
+    if NaiveDate::parse_from_str(value, "%Y-%m-%d").is_err() {
         return Err("date must use valid calendar values".to_string());
     }
 
@@ -204,7 +198,7 @@ pub enum Commands {
         /// End date filter (YYYY-MM-DD)
         #[arg(long, value_parser = parse_iso_date)]
         to: Option<IsoDate>,
-        /// Emit raw JSON array output for machine parsing
+        /// Emit structured JSON object output for machine parsing
         #[arg(long)]
         json: bool,
     },
@@ -216,7 +210,7 @@ pub enum Commands {
         /// End date filter (YYYY-MM-DD)
         #[arg(long, value_parser = parse_iso_date)]
         to: Option<IsoDate>,
-        /// Emit raw JSON array output for machine parsing
+        /// Emit structured JSON object output for machine parsing
         #[arg(long)]
         json: bool,
     },

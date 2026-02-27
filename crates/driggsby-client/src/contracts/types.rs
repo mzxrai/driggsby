@@ -339,6 +339,40 @@ pub struct IntelligenceData {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct RecurringRow {
+    pub group_key: String,
+    pub account_key: String,
+    pub merchant: String,
+    pub counterparty: String,
+    pub counterparty_source: String,
+    pub cadence: String,
+    pub typical_amount: f64,
+    pub currency: String,
+    pub first_seen_at: String,
+    pub last_seen_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_expected_at: Option<String>,
+    pub occurrence_count: i64,
+    pub cadence_fit: f64,
+    pub amount_fit: f64,
+    pub score: f64,
+    pub amount_min: f64,
+    pub amount_max: f64,
+    pub sample_description: String,
+    pub quality_flags: Vec<String>,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RecurringData {
+    pub policy_version: String,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub rows: Vec<RecurringRow>,
+    pub data_range_hint: DataRangeHint,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct DemoData {
     pub topic: String,
     pub url: String,

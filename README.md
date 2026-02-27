@@ -8,7 +8,7 @@ It gives you:
 - a CLI that is explicit and machine-friendly
 - public SQL views (`v1_*`) you can query directly
 
-## Current State (February 26, 2026)
+## Current State (February 27, 2026)
 
 Implemented and usable now:
 - Local ledger setup + migrations (`SQLite`, auto-initialized on first command)
@@ -31,7 +31,12 @@ Implemented and usable now:
   - these commands currently return local URLs (default `http://127.0.0.1:8787...`) and assume a dashboard runtime is available there
 
 Partially implemented (wired, but still early):
-- `recurring` and `anomalies` command surfaces exist, but core detection logic is still placeholder-level in the current build.
+- `anomalies` command surface exists, but core anomaly detection logic is still placeholder-level.
+
+Implemented intelligence command:
+- `recurring` now computes deterministic recurring classifications from imported transactions
+- policy is explicit and versioned (`policy_version: "recurring/v1"`)
+- recurring rows include auditable evidence fields (`cadence_fit`, `amount_fit`, `score`, `occurrence_count`, `next_expected_at`, etc.)
 
 ## Quick Start
 

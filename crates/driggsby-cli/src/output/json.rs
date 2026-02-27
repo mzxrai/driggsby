@@ -132,10 +132,17 @@ fn render_recurring_json(data: &Value) -> Value {
         .cloned()
         .unwrap_or_default();
     let normalized_rows = normalize_recurring_rows(&rows);
+    let range_hint = data.get("data_range_hint").cloned().unwrap_or(Value::Null);
+    let data_covers = json!({
+        "from": range_hint.get("earliest").cloned().unwrap_or(Value::Null),
+        "to": range_hint.get("latest").cloned().unwrap_or(Value::Null),
+    });
 
     json!({
+        "policy_version": data.get("policy_version").cloned().unwrap_or(Value::Null),
         "from": data.get("from").cloned().unwrap_or(Value::Null),
         "to": data.get("to").cloned().unwrap_or(Value::Null),
+        "data_covers": data_covers,
         "rows": normalized_rows,
     })
 }
