@@ -2,7 +2,7 @@ use std::io;
 
 use serde_json::Value;
 
-use super::format::{self, Align, Column};
+use super::format;
 
 pub fn render_sql_result(data: &Value) -> io::Result<String> {
     let columns = data
@@ -60,33 +60,7 @@ pub fn render_sql_result(data: &Value) -> io::Result<String> {
     }
 
     lines.push("Results:".to_string());
-
-    let table_columns = columns
-        .iter()
-        .map(|column| Column {
-            name: column
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown"),
-            align: Align::Left,
-        })
-        .collect::<Vec<Column<'_>>>();
-
-    let table_rows = rows
-        .iter()
-        .map(|row| {
-            row.as_array()
-                .map(|values| values.iter().map(render_scalar).collect::<Vec<String>>())
-                .unwrap_or_default()
-        })
-        .collect::<Vec<Vec<String>>>();
-
-    lines.extend(format::render_table_or_blocks(
-        &table_columns,
-        &table_rows,
-        format::terminal_width(),
-        "Row",
-    ));
+    lines.extend(render_rows_as_blocks(columns, rows));
 
     if truncated {
         lines.push(String::new());
@@ -96,6 +70,58 @@ pub fn render_sql_result(data: &Value) -> io::Result<String> {
     }
 
     Ok(lines.join("\n"))
+}
+
+fn render_rows_as_blocks(columns: &[Value], rows: &[Value]) -> Vec<String> {
+    let labels = columns
+        .iter()
+        .map(|column| {
+            let name = column
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            format!("{name}:")
+        })
+        .collect::<Vec<String>>();
+    let label_width = labels.iter().map(|label| label.len()).max().unwrap_or(0);
+
+    let mut lines = Vec::new();
+    for (row_index, row) in rows.iter().enumerate() {
+        lines.push(format!("  Row {}:", row_index + 1));
+
+        let values = row.as_array();
+        if values.is_none() {
+            lines.push("    warning: invalid row payload (expected array).".to_string());
+        }
+
+        for (column_index, label) in labels.iter().enumerate() {
+            let value = if let Some(items) = values {
+                items
+                    .get(column_index)
+                    .map(render_scalar)
+                    .unwrap_or_default()
+            } else {
+                "<invalid row shape>".to_string()
+            };
+            let mut value_lines = value.lines();
+
+            if let Some(first_line) = value_lines.next() {
+                lines.push(format!("    {label:<label_width$}  {first_line}"));
+            } else {
+                lines.push(format!("    {label:<label_width$}"));
+            }
+
+            for continuation in value_lines {
+                lines.push(format!("    {:<label_width$}  {continuation}", ""));
+            }
+        }
+
+        if row_index + 1 < rows.len() {
+            lines.push(String::new());
+        }
+    }
+
+    lines
 }
 
 fn render_scalar(value: &Value) -> String {
@@ -115,7 +141,7 @@ mod tests {
     use super::render_sql_result;
 
     #[test]
-    fn sql_text_renders_summary_and_table() {
+    fn sql_text_renders_summary_and_row_blocks() {
         let payload = json!({
             "columns": [
                 {"name": "account_key", "type": "text", "nullable": false},
@@ -136,6 +162,8 @@ mod tests {
             assert!(text.contains("Rows returned:"));
             assert!(text.contains("Results:"));
             assert!(text.contains("acct_1"));
+            assert!(text.contains("Row 1:"));
+            assert!(text.contains("account_key:"));
         }
     }
 
@@ -154,6 +182,48 @@ mod tests {
         assert!(rendered.is_ok());
         if let Ok(text) = rendered {
             assert!(text.contains("No rows returned."));
+        }
+    }
+
+    #[test]
+    fn sql_text_renders_warning_for_non_array_rows() {
+        let payload = json!({
+            "columns": [
+                {"name": "account_key", "type": "text", "nullable": false},
+                {"name": "txn_count", "type": "integer", "nullable": false}
+            ],
+            "rows": [{"account_key": "acct_1", "txn_count": 2}],
+            "row_count": 1,
+            "truncated": false,
+            "max_rows": 1000,
+            "source": "inline"
+        });
+
+        let rendered = render_sql_result(&payload);
+        assert!(rendered.is_ok());
+        if let Ok(text) = rendered {
+            assert!(text.contains("warning: invalid row payload (expected array)."));
+            assert!(text.contains("account_key:  <invalid row shape>"));
+            assert!(text.contains("txn_count:    <invalid row shape>"));
+        }
+    }
+
+    #[test]
+    fn sql_text_renders_multiline_values_with_continuation_indent() {
+        let payload = json!({
+            "columns": [{"name": "description", "type": "text", "nullable": false}],
+            "rows": [["line one\nline two"]],
+            "row_count": 1,
+            "truncated": false,
+            "max_rows": 1000,
+            "source": "inline"
+        });
+
+        let rendered = render_sql_result(&payload);
+        assert!(rendered.is_ok());
+        if let Ok(text) = rendered {
+            assert!(text.contains("description:  line one"));
+            assert!(text.contains("               line two"));
         }
     }
 }
