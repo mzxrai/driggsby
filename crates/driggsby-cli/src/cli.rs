@@ -109,16 +109,16 @@ Field rules (very explicit):
     A stable account name. Pick one value and keep it the same forever.
     Example: `chase_checking_1234`
 
-  posted_at (required):
-    Date only, exactly `YYYY-MM-DD`.
-    Example: `2026-01-15`
-
   account_type (optional but recommended):
     Canonical values:
       checking, savings, credit_card, loan, brokerage, retirement, hsa, other
     Common aliases are accepted and normalized automatically, including:
       creditcard, credit-card, retirement_401k, 401k_retirement, investment_taxable
     If provided for an account_key, keep it consistent forever.
+
+  posted_at (required):
+    Date only, exactly `YYYY-MM-DD`.
+    Example: `2026-01-15`
 
   amount (required):
     A number, not text.
