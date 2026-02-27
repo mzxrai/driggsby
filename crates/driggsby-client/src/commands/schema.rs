@@ -10,7 +10,7 @@ pub fn summary() -> ClientResult<SuccessEnvelope> {
         readonly_uri: setup.readonly_uri,
         public_views: setup.public_views,
     };
-    success("schema", data)
+    success("db schema", data)
 }
 
 pub fn view(view_name: &str) -> ClientResult<SuccessEnvelope> {
@@ -24,14 +24,17 @@ pub fn view(view_name: &str) -> ClientResult<SuccessEnvelope> {
             view_name: view_name.to_string(),
             columns: known_view.columns,
         };
-        success("schema.view", data)
+        success("db schema view", data)
     } else {
         Err(crate::ClientError::new(
             "unknown_view",
-            &format!("Unknown view `{view_name}`. Run `driggsby schema` to list available views."),
+            &format!(
+                "Unknown view `{view_name}`. Run `driggsby db schema` to list available views."
+            ),
             vec![
-                "Run `driggsby schema` to list available views.".to_string(),
-                "Use `driggsby schema view v1_transactions` as a known-good example.".to_string(),
+                "Run `driggsby db schema` to list available views.".to_string(),
+                "Use `driggsby db schema view v1_transactions` as a known-good example."
+                    .to_string(),
             ],
         ))
     }

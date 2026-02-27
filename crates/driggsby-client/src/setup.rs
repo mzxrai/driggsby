@@ -250,6 +250,7 @@ fn verify_post_repair_objects(connection: &Connection, db_path: &Path) -> Client
             return Err(ClientError::ledger_corrupt(db_path));
         }
     }
+    verify_canonical_view_sql(connection, db_path)?;
 
     for index_name in REQUIRED_INDEX_NAMES {
         if !sqlite_object_exists(connection, "index", index_name, db_path)? {
@@ -258,6 +259,53 @@ fn verify_post_repair_objects(connection: &Connection, db_path: &Path) -> Client
     }
 
     Ok(())
+}
+
+fn verify_canonical_view_sql(connection: &Connection, db_path: &Path) -> ClientResult<()> {
+    for view_name in REQUIRED_VIEW_NAMES {
+        let actual_sql = connection
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'view' AND name = ?1 LIMIT 1",
+                [view_name],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| map_sqlite_error(db_path, &error))?;
+
+        let Some(actual_view_sql) = actual_sql else {
+            return Err(ClientError::ledger_corrupt(db_path));
+        };
+
+        let expected_block = safe_repair_statement(view_name).ok_or_else(|| {
+            ClientError::ledger_init_failed(db_path, "Missing canonical SQL for view verification.")
+        })?;
+        let expected_create = extract_create_view_sql(&expected_block).ok_or_else(|| {
+            ClientError::ledger_init_failed(
+                db_path,
+                "Missing canonical CREATE VIEW SQL for verification.",
+            )
+        })?;
+
+        if normalize_sql(&actual_view_sql) != normalize_sql(expected_create) {
+            return Err(ClientError::ledger_corrupt(db_path));
+        }
+    }
+
+    Ok(())
+}
+
+fn extract_create_view_sql(statement_block: &str) -> Option<&str> {
+    statement_block
+        .split(';')
+        .map(str::trim)
+        .find(|statement| statement.to_ascii_lowercase().starts_with("create view "))
+}
+
+fn normalize_sql(sql: &str) -> String {
+    sql.chars()
+        .filter(|value| !value.is_whitespace() && *value != ';')
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 fn sqlite_object_exists(

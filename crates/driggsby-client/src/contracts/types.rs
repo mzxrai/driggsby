@@ -1,4 +1,5 @@
 use serde::Serialize;
+use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ViewColumn {
@@ -19,6 +20,26 @@ pub struct SchemaSummaryData {
 pub struct SchemaViewData {
     pub view_name: String,
     pub columns: Vec<ViewColumn>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SqlColumn {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub column_type: String,
+    pub nullable: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SqlQueryData {
+    pub columns: Vec<SqlColumn>,
+    pub rows: Vec<Vec<Value>>,
+    pub row_count: i64,
+    pub truncated: bool,
+    pub max_rows: i64,
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

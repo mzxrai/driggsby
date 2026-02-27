@@ -37,35 +37,35 @@ A dedicated `db` namespace with a built-in query command gives agents:
 
 ## Goals and Acceptance Criteria
 
-- [ ] Agents can discover DB surfaces via `driggsby db --help` and execute SQL in <=3 calls.
+- [x] Agents can discover DB surfaces via `driggsby db --help` and execute SQL in <=3 calls.
   - Acceptance: top-level help and db help explicitly show `db schema` and `db sql` workflows.
   - Acceptance: `driggsby db schema` includes ready-to-run query examples.
 
-- [ ] Existing schema functionality is preserved under `db schema`.
+- [x] Existing schema functionality is preserved under `db schema`.
   - Acceptance: `driggsby db schema` output remains data-access-focused and semantically equivalent to prior output.
   - Acceptance: `driggsby db schema view <name>` continues to return the same contract for known views.
 
-- [ ] `driggsby db sql` provides secure read-only query execution.
+- [x] `driggsby db sql` provides secure read-only query execution.
   - Acceptance: valid SELECT queries against `v1_*` views succeed.
   - Acceptance: writes, non-readonly statements, multi-statement input, PRAGMA/ATTACH, and internal-object reads fail with deterministic errors.
 
-- [ ] `db sql` output is deterministic and machine-friendly.
+- [x] `db sql` output is deterministic and machine-friendly.
   - Acceptance: plaintext output includes query summary + tabular results.
   - Acceptance: JSON output returns stable `columns`, `rows`, `row_count`, `truncated`, and source metadata.
 
-- [ ] Breaking change to old path is explicit and tested.
+- [x] Breaking change to old path is explicit and tested.
   - Acceptance: `driggsby schema` fails with deterministic `invalid_argument` guidance that points to `driggsby db schema`.
 
 ## Scope
 
-- [ ] CLI command tree migration from top-level `schema` to `db schema`
-- [ ] New CLI command: `db sql`
-- [ ] Client command module for SQL execution
-- [ ] Read-only connection helper and SQL safety checks
-- [ ] SQL result contract types
-- [ ] Plaintext and JSON renderers for SQL results
-- [ ] Help text and command-hint updates
-- [ ] Contract tests + security-focused client tests
+- [x] CLI command tree migration from top-level `schema` to `db schema`
+- [x] New CLI command: `db sql`
+- [x] Client command module for SQL execution
+- [x] Read-only connection helper and SQL safety checks
+- [x] SQL result contract types
+- [x] Plaintext and JSON renderers for SQL results
+- [x] Help text and command-hint updates
+- [x] Contract tests + security-focused client tests
 
 ## Out of Scope
 
@@ -139,29 +139,29 @@ Contract rules:
 
 ### Enforcement Layers (all required)
 
-- [ ] Input guardrails:
+- [x] Input guardrails:
   - non-empty SQL required
   - max SQL length enforced
   - reject NUL bytes
 
-- [ ] Source guardrails:
+- [x] Source guardrails:
   - exactly one input source (inline OR file OR stdin)
   - deterministic invalid_argument on conflicts/missing source
 
-- [ ] Connection guardrails:
+- [x] Connection guardrails:
   - open dedicated read-only SQLite connection (`SQLITE_OPEN_READ_ONLY`)
   - apply busy-timeout and existing sqlite error mapping
 
-- [ ] Statement guardrails:
+- [x] Statement guardrails:
   - single statement only (reject multi-statement)
   - require `stmt.readonly() == true`
 
-- [ ] Object-access guardrails:
+- [x] Object-access guardrails:
   - enforce public-view-only reads (`v1_*` allowlist from canonical contract)
   - deny internal tables and SQLite administration/DDL/DML surfaces
   - implement using SQLite authorizer hook via `rusqlite` hooks feature
 
-- [ ] Output guardrails:
+- [x] Output guardrails:
   - bounded row return count with truncation flag
   - default cap `1000`, hard max `10000`
 
@@ -183,136 +183,145 @@ System failures continue using existing mapped codes (`ledger_locked`, `ledger_c
 
 ### Workstream A - CLI command tree and parsing
 
-- [ ] Add `Db` command family in `crates/driggsby-cli/src/cli.rs`.
-- [ ] Add `DbCommand::Schema` and `DbCommand::Sql` subcommands.
-- [ ] Add parser tests for full `db` path matrix.
-- [ ] Remove legacy parse paths for top-level `schema`.
+- [x] Add `Db` command family in `crates/driggsby-cli/src/cli.rs`.
+- [x] Add `DbCommand::Schema` and `DbCommand::Sql` subcommands.
+- [x] Add parser tests for full `db` path matrix.
+- [x] Remove legacy parse paths for top-level `schema`.
 
 ### Workstream B - CLI dispatch + mode routing
 
-- [ ] Route `db schema` and `db schema view` to existing schema client commands.
-- [ ] Route `db sql` to new client SQL command.
-- [ ] Extend output mode router for `db sql --json`.
-- [ ] Keep parse-time JSON error inference behavior consistent.
+- [x] Route `db schema` and `db schema view` to existing schema client commands.
+- [x] Route `db sql` to new client SQL command.
+- [x] Extend output mode router for `db sql --json`.
+- [x] Keep parse-time JSON error inference behavior consistent.
 
 ### Workstream C - Client SQL execution module
 
-- [ ] Add `crates/driggsby-client/src/commands/sql.rs` (or `db_sql.rs`) with single responsibility.
-- [ ] Resolve SQL source, validate source rules, and normalize query text.
-- [ ] Execute query through strict safety pipeline.
-- [ ] Return typed SQL result contract.
+- [x] Add `crates/driggsby-client/src/commands/sql.rs` (or `db_sql.rs`) with single responsibility.
+- [x] Resolve SQL source, validate source rules, and normalize query text.
+- [x] Execute query through strict safety pipeline.
+- [x] Return typed SQL result contract.
 
 ### Workstream D - Read-only connection + authorizer guardrails
 
-- [ ] Add read-only connection helper in `crates/driggsby-client/src/state.rs`.
-- [ ] Enable and wire authorizer-based allow/deny logic.
-- [ ] Use canonical public view allowlist from shared contract source.
+- [x] Add read-only connection helper in `crates/driggsby-client/src/state.rs`.
+- [x] Enable and wire authorizer-based allow/deny logic.
+- [x] Use canonical public view allowlist from shared contract source.
 
 ### Workstream E - Output rendering
 
-- [ ] Add `crates/driggsby-cli/src/output/sql_text.rs` for plaintext SQL results.
-- [ ] Wire `sql` branch in `crates/driggsby-cli/src/output/mod.rs`.
-- [ ] Add `sql` JSON branch in `crates/driggsby-cli/src/output/json.rs`.
-- [ ] Ensure renderer gracefully handles empty results and mixed value types.
+- [x] Add `crates/driggsby-cli/src/output/sql_text.rs` for plaintext SQL results.
+- [x] Wire `sql` branch in `crates/driggsby-cli/src/output/mod.rs`.
+- [x] Add `sql` JSON branch in `crates/driggsby-cli/src/output/json.rs`.
+- [x] Ensure renderer gracefully handles empty results and mixed value types.
 
 ### Workstream F - Help text and command guidance updates
 
-- [ ] Update root/top-level help copy in `crates/driggsby-cli/src/main.rs` to reference `driggsby db schema`.
-- [ ] Update schema-rendered “inspect/detail” guidance commands to `driggsby db schema view <name>`.
-- [ ] Update command hint mapping in `main.rs` for `db`, `db schema`, `db schema view`, and `db sql`.
-- [ ] Update any recovery-step command strings that currently point to `driggsby schema`.
+- [x] Update root/top-level help copy in `crates/driggsby-cli/src/main.rs` to reference `driggsby db schema`.
+- [x] Update schema-rendered “inspect/detail” guidance commands to `driggsby db schema view <name>`.
+- [x] Update command hint mapping in `main.rs` for `db`, `db schema`, `db schema view`, and `db sql`.
+- [x] Update any recovery-step command strings that currently point to `driggsby schema`.
 
 ### Workstream G - Tests and hardening
 
-- [ ] Add/adjust CLI contract tests in `crates/driggsby-cli/tests/contract_scaffold.rs`.
-- [ ] Add client-level SQL safety tests under `crates/driggsby-client/tests/`.
-- [ ] Add unit tests for authorizer rules and input-source resolution.
-- [ ] Add regression tests to prove no-write behavior for sql command path.
+- [x] Add/adjust CLI contract tests in `crates/driggsby-cli/tests/contract_scaffold.rs`.
+- [x] Add client-level SQL safety tests under `crates/driggsby-client/tests/`.
+- [x] Add unit tests for authorizer rules and input-source resolution.
+- [x] Add regression tests to prove no-write behavior for sql command path.
 
 ## TDD Execution Plan
 
 ### Step 0 - Red tests first
 
-- [ ] Add failing parse/contract tests for new `db` command paths.
-- [ ] Add failing SQL safety tests (allowed + blocked query classes).
-- [ ] Add failing tests for removed top-level `schema` path behavior.
+- [x] Add failing parse/contract tests for new `db` command paths.
+- [x] Add failing SQL safety tests (allowed + blocked query classes).
+- [x] Add failing tests for removed top-level `schema` path behavior.
 
 ### Step 1 - Minimal implementation
 
-- [ ] Implement CLI tree migration and dispatch routing.
-- [ ] Implement client SQL module with minimal safe execution path.
-- [ ] Implement SQL output renderers and mode wiring.
+- [x] Implement CLI tree migration and dispatch routing.
+- [x] Implement client SQL module with minimal safe execution path.
+- [x] Implement SQL output renderers and mode wiring.
 
 ### Step 2 - Iterate to green
 
-- [ ] Run targeted test subsets and fix implementation defects.
-- [ ] Ensure behavior is deterministic across text and JSON output.
+- [x] Run targeted test subsets and fix implementation defects.
+- [x] Ensure behavior is deterministic across text and JSON output.
 
 ### Step 3 - Full verification
 
-- [ ] Run `cargo test --all-features`.
-- [ ] Run `just required-check`.
+- [x] Run `cargo test --all-features`.
+- [x] Run `just required-check`.
 
 ### Step 4 - Multi-agent review loops
 
-- [ ] Stage 1 `agentic_ux` review (primary + adversarial) for public interface quality.
-- [ ] Stage 2 `verification` review (primary + adversarial) for defects/security/maintainability.
-- [ ] Fix all `high_friction+` UX issues and `medium+` verification issues.
+- [x] Stage 1 `agentic_ux` review (primary + adversarial) for public interface quality.
+- [x] Stage 2 `verification` review (primary + adversarial) for defects/security/maintainability.
+- [x] Fix all `high_friction+` UX issues and `medium+` verification issues.
 
 ### Step 5 - Final gates and closeout
 
-- [ ] Run final sweep review with 1-2 subagents.
-- [ ] Run smoke checks with real CLI invocations and representative SQL queries.
-- [ ] Update this plan file with completed checkboxes + executive summary.
-- [ ] Run `just rust-verify`.
+- [x] Run final sweep review with 1-2 subagents.
+- [x] Run smoke checks with real CLI invocations and representative SQL queries.
+- [x] Update this plan file with completed checkboxes + executive summary.
+- [x] Run `just rust-verify`.
 
 ## Test Matrix
 
-- [ ] `T-01` `driggsby db schema` returns expected plaintext schema summary.
-- [ ] `T-02` `driggsby db schema view v1_transactions` returns expected plaintext detail output.
-- [ ] `T-03` `driggsby schema` fails with deterministic `invalid_argument` + migration guidance.
-- [ ] `T-04` `driggsby db sql \"SELECT * FROM v1_transactions LIMIT 1\"` succeeds.
-- [ ] `T-05` `driggsby db sql --file query.sql` succeeds.
-- [ ] `T-06` `driggsby db sql --file -` with piped SQL succeeds; empty stdin fails clearly.
-- [ ] `T-07` `db sql` missing input source fails deterministically.
-- [ ] `T-08` `db sql` conflicting sources (inline + file, file + stdin) fail deterministically.
-- [ ] `T-09` multi-statement SQL fails.
-- [ ] `T-10` non-readonly statement (`INSERT/UPDATE/DELETE`) fails.
-- [ ] `T-11` direct internal-table query fails.
-- [ ] `T-12` PRAGMA/ATTACH/DETACH style statements fail.
-- [ ] `T-13` CTE over allowed `v1_*` views succeeds.
-- [ ] `T-14` `db sql --json` returns `columns + rows` contract with deterministic ordering.
-- [ ] `T-15` row cap behavior is deterministic (`truncated` true when cap exceeded).
-- [ ] `T-16` query path is no-write (pre/post row counts unchanged).
-- [ ] `T-17` parse/runtime errors with `--json` return universal JSON error shape.
+- [x] `T-01` `driggsby db schema` returns expected plaintext schema summary.
+- [x] `T-02` `driggsby db schema view v1_transactions` returns expected plaintext detail output.
+- [x] `T-03` `driggsby schema` fails with deterministic `invalid_argument` + migration guidance.
+- [x] `T-04` `driggsby db sql \"SELECT * FROM v1_transactions LIMIT 1\"` succeeds.
+- [x] `T-05` `driggsby db sql --file query.sql` succeeds.
+- [x] `T-06` `driggsby db sql --file -` with piped SQL succeeds; empty stdin fails clearly.
+- [x] `T-07` `db sql` missing input source fails deterministically.
+- [x] `T-08` `db sql` conflicting sources (inline + file, file + stdin) fail deterministically.
+- [x] `T-09` multi-statement SQL fails.
+- [x] `T-10` non-readonly statement (`INSERT/UPDATE/DELETE`) fails.
+- [x] `T-11` direct internal-table query fails.
+- [x] `T-12` PRAGMA/ATTACH/DETACH style statements fail.
+- [x] `T-13` CTE over allowed `v1_*` views succeeds.
+- [x] `T-14` `db sql --json` returns `columns + rows` contract with deterministic ordering.
+- [x] `T-15` row cap behavior is deterministic (`truncated` true when cap exceeded).
+- [x] `T-16` query path is no-write (pre/post row counts unchanged).
+- [x] `T-17` parse/runtime errors with `--json` return universal JSON error shape.
 
 ## Risks and Mitigations
 
-- [ ] Risk: hard-breaking `schema` may surprise existing agent scripts.
+- [x] Risk: hard-breaking `schema` may surprise existing agent scripts.
   - Mitigation: explicit error guidance and top-level help updates pointing to `db schema`.
 
-- [ ] Risk: SQL allow/deny logic may accidentally over-block legitimate read queries.
+- [x] Risk: SQL allow/deny logic may accidentally over-block legitimate read queries.
   - Mitigation: broaden positive tests (including CTEs/aliases/subqueries) before finalizing allowlist decisions.
 
-- [ ] Risk: SQL safety checks drift from public view contract source-of-truth.
+- [x] Risk: SQL safety checks drift from public view contract source-of-truth.
   - Mitigation: derive allowlist from shared canonical view contracts rather than duplicate constants.
 
-- [ ] Risk: large query outputs overwhelm agents.
+- [x] Risk: large query outputs overwhelm agents.
   - Mitigation: enforce bounded row cap with explicit truncation metadata and clear guidance to add `LIMIT`.
 
 ## Formal Acceptance Checklist
 
-- [ ] New `db` command tree is fully wired and documented in help output.
-- [ ] `db schema` functionality parity is preserved.
-- [ ] `db sql` supports inline/file/stdin with deterministic source resolution.
-- [ ] SQL execution is proven read-only and public-view-only by tests.
-- [ ] Plaintext and JSON contracts for `db sql` are stable and covered.
-- [ ] Legacy `schema` path removal behavior is explicit and user-guided.
-- [ ] Required checks/tests pass and review findings are resolved.
+- [x] New `db` command tree is fully wired and documented in help output.
+- [x] `db schema` functionality parity is preserved.
+- [x] `db sql` supports inline/file/stdin with deterministic source resolution.
+- [x] SQL execution is proven read-only and public-view-only by tests.
+- [x] Plaintext and JSON contracts for `db sql` are stable and covered.
+- [x] Legacy `schema` path removal behavior is explicit and user-guided.
+- [x] Required checks/tests pass and review findings are resolved.
 
 ## Assumptions and Defaults
 
-- [ ] Default SQL result cap is `1000` rows; hard cap is `10000`.
-- [ ] SQL text length cap is `65536` bytes.
-- [ ] `db schema` remains plaintext-only in this phase.
-- [ ] No DB migration is required; this phase is command/output/security-layer work.
+- [x] Default SQL result cap is `1000` rows; hard cap is `10000`.
+- [x] SQL text length cap is `65536` bytes.
+- [x] `db schema` remains plaintext-only in this phase.
+- [x] No DB migration is required; this phase is command/output/security-layer work.
+
+## Executive Summary
+- Migrated the CLI from top-level `schema` to a dedicated `db` namespace, with `db schema`, `db schema view`, and the new `db sql` command wired end-to-end through parsing, dispatch, output mode routing, and help text.
+- Implemented `db sql` with strict guardrails: single-source SQL resolution (inline/file/stdin), input validation, read-only SQLite connection, single-statement + readonly enforcement, authorizer-backed object/function restrictions, and bounded row output with truncation metadata.
+- Hardened security after adversarial review by adding canonical required-view SQL verification during setup, preventing tampered view definitions from being used to exfiltrate `internal_*` data through `db sql`.
+- Stabilized output contracts for agent consumption: plaintext summary/table rendering and raw JSON payload (`columns`, `rows`, `row_count`, `truncated`, `max_rows`, `source`, optional `source_ref`) without success envelopes.
+- Improved agent UX around common failure paths, including deterministic migration guidance for removed `driggsby schema` and actionable recovery text when inline SQL is not quoted correctly.
+- Added and expanded tests across CLI and client layers, including safety regressions (no-write behavior, tampered-view rejection, malformed/user SQL error mapping, metadata consistency), then re-ran full verification gates (`cargo test --all-features`, `just required-check`, `just rust-verify`) successfully.
+- Follow-up reviewer pass confirmed prior `high_friction+` and `medium+` findings were resolved; one deliberate decision remains unchanged by plan design: `db schema --json` stays unsupported in this phase.

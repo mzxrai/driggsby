@@ -8,6 +8,7 @@ mod intelligence_text;
 mod json;
 mod mode;
 mod schema_text;
+mod sql_text;
 
 use crate::stdout_io::write_stdout_line;
 use std::io;
@@ -35,8 +36,9 @@ pub fn print_failure(error: &ClientError, mode: OutputMode) -> io::Result<()> {
 fn render_text_success(success: &SuccessEnvelope) -> io::Result<String> {
     match success.command.as_str() {
         "account list" => accounts_text::render_accounts(&success.data),
-        "schema" => schema_text::render_schema_summary(&success.data),
-        "schema.view" => schema_text::render_schema_view(&success.data),
+        "db schema" => schema_text::render_schema_summary(&success.data),
+        "db schema view" => schema_text::render_schema_view(&success.data),
+        "db sql" => sql_text::render_sql_result(&success.data),
         "import" => import_text::render_import_run(&success.data),
         "import list" => import_text::render_import_list(&success.data),
         "import duplicates" => import_text::render_import_duplicates(&success.data),

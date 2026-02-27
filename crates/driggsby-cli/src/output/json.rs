@@ -17,6 +17,7 @@ pub fn render_success_json(success: &SuccessEnvelope) -> io::Result<String> {
         "import duplicates" => render_import_duplicates_json(&success.data),
         "import keys uniq" => render_import_keys_uniq_json(&success.data),
         "import undo" => render_import_undo_json(&success.data),
+        "db sql" => render_db_sql_json(&success.data),
         "anomalies" => render_anomalies_json(&success.data),
         "recurring" => render_recurring_json(&success.data),
         _ => {
@@ -87,6 +88,10 @@ fn render_import_duplicates_json(data: &Value) -> Value {
 }
 
 fn render_import_keys_uniq_json(data: &Value) -> Value {
+    data.clone()
+}
+
+fn render_db_sql_json(data: &Value) -> Value {
     data.clone()
 }
 
@@ -353,6 +358,39 @@ mod tests {
                 assert_eq!(value["version"], Value::String("v1".to_string()));
                 assert_eq!(value["data"]["dry_run"], Value::Bool(true));
                 assert_eq!(value["data"]["summary"]["rows_read"], Value::from(1));
+            }
+        }
+    }
+
+    #[test]
+    fn db_sql_json_returns_raw_query_payload_without_envelope() {
+        let payload = success(
+            "db sql",
+            json!({
+                "columns": [
+                    {"name": "account_key", "type": "text", "nullable": false}
+                ],
+                "rows": [["acct_1"]],
+                "row_count": 1,
+                "truncated": false,
+                "max_rows": 1000,
+                "source": "inline"
+            }),
+        );
+
+        let rendered = render_success_json(&payload);
+        assert!(rendered.is_ok());
+        if let Ok(text) = rendered {
+            let parsed: Result<Value, _> = serde_json::from_str(&text);
+            assert!(parsed.is_ok());
+            if let Ok(value) = parsed {
+                assert!(value["columns"].is_array());
+                assert!(value["rows"].is_array());
+                assert_eq!(value["row_count"], Value::from(1));
+                assert_eq!(value["truncated"], Value::Bool(false));
+                assert_eq!(value["source"], Value::String("inline".to_string()));
+                assert!(value.get("ok").is_none());
+                assert!(value.get("version").is_none());
             }
         }
     }

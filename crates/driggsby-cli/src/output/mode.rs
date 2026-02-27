@@ -1,4 +1,4 @@
-use crate::cli::{AccountCommand, Commands, ImportCommand, ImportKeysCommand};
+use crate::cli::{AccountCommand, Commands, DbCommand, ImportCommand, ImportKeysCommand};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum OutputMode {
@@ -39,6 +39,16 @@ pub fn mode_for_command(command: &Commands) -> OutputMode {
                 OutputMode::Text
             }
         }
+        Commands::Db { command } => match command {
+            DbCommand::Sql { json, .. } => {
+                if *json {
+                    OutputMode::Json
+                } else {
+                    OutputMode::Text
+                }
+            }
+            DbCommand::Schema { .. } => OutputMode::Text,
+        },
         _ => OutputMode::Text,
     }
 }
@@ -120,7 +130,7 @@ mod tests {
 
     #[test]
     fn mode_uses_text_for_commands_without_json_flag() {
-        let schema = parse_from(["driggsby", "schema"]);
+        let schema = parse_from(["driggsby", "db", "schema"]);
         assert!(schema.is_ok());
         if let Ok(cli) = schema {
             assert_eq!(mode_for_command(&cli.command), OutputMode::Text);
@@ -136,6 +146,15 @@ mod tests {
         assert!(keys_uniq.is_ok());
         if let Ok(cli) = keys_uniq {
             assert_eq!(mode_for_command(&cli.command), OutputMode::Text);
+        }
+    }
+
+    #[test]
+    fn mode_uses_json_for_db_sql_with_json_flag() {
+        let parsed = parse_from(["driggsby", "db", "sql", "SELECT 1", "--json"]);
+        assert!(parsed.is_ok());
+        if let Ok(cli) = parsed {
+            assert_eq!(mode_for_command(&cli.command), OutputMode::Json);
         }
     }
 }

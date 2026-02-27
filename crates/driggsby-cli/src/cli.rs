@@ -178,10 +178,11 @@ pub enum Commands {
         #[command(subcommand)]
         command: AccountCommand,
     },
-    /// Show your local database path, connection URI, and public view contracts
-    Schema {
+    /// Database discovery and query commands
+    #[command(arg_required_else_help = true)]
+    Db {
         #[command(subcommand)]
-        command: Option<SchemaCommand>,
+        command: DbCommand,
     },
     /// Manage transaction imports
     #[command(arg_required_else_help = true)]
@@ -221,6 +222,26 @@ pub enum Commands {
     },
     /// Open the Driggsby web dashboard in your browser
     Dash,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum DbCommand {
+    /// Show your local database path, connection URI, and public view contracts
+    Schema {
+        #[command(subcommand)]
+        command: Option<SchemaCommand>,
+    },
+    /// Run a read-only SQL query against public v1_* views
+    Sql {
+        /// Inline SQL query to execute
+        query: Option<String>,
+        /// Read SQL from a file path, or `-` for stdin
+        #[arg(long)]
+        file: Option<String>,
+        /// Emit machine-readable JSON output
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -322,15 +343,19 @@ where
 mod tests {
     use clap::error::ErrorKind;
 
-    use super::{AccountCommand, Commands, DemoCommand, ImportCommand, SchemaCommand, parse_from};
+    use super::{AccountCommand, Commands, DemoCommand, ImportCommand, parse_from};
 
     #[test]
     fn parse_command_paths() {
-        let cases: [Vec<&str>; 22] = [
+        let cases: [Vec<&str>; 26] = [
             vec!["driggsby", "account", "list"],
             vec!["driggsby", "account", "list", "--json"],
-            vec!["driggsby", "schema"],
-            vec!["driggsby", "schema", "view", "v1_transactions"],
+            vec!["driggsby", "db", "schema"],
+            vec!["driggsby", "db", "schema", "view", "v1_transactions"],
+            vec!["driggsby", "db", "sql", "SELECT 1"],
+            vec!["driggsby", "db", "sql", "SELECT 1", "--json"],
+            vec!["driggsby", "db", "sql", "--file", "./query.sql"],
+            vec!["driggsby", "db", "sql", "--file", "-"],
             vec!["driggsby", "import", "create"],
             vec![
                 "driggsby",
@@ -378,17 +403,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_schema_view_variant() {
-        let parsed = parse_from(["driggsby", "schema", "view", "v1_transactions"]);
+    fn parse_db_schema_view_path() {
+        let parsed = parse_from(["driggsby", "db", "schema", "view", "v1_transactions"]);
         assert!(parsed.is_ok());
-        if let Ok(cli) = parsed {
-            assert!(matches!(
-                cli.command,
-                Commands::Schema {
-                    command: Some(SchemaCommand::View { .. })
-                }
-            ));
-        }
     }
 
     #[test]
@@ -576,14 +593,30 @@ mod tests {
 
     #[test]
     fn parse_unsupported_json_flags_are_rejected() {
-        let schema = parse_from(["driggsby", "schema", "--json"]);
+        let schema = parse_from(["driggsby", "db", "schema", "--json"]);
         assert!(schema.is_err());
 
-        let schema_view = parse_from(["driggsby", "schema", "view", "v1_transactions", "--json"]);
+        let schema_view = parse_from([
+            "driggsby",
+            "db",
+            "schema",
+            "view",
+            "v1_transactions",
+            "--json",
+        ]);
         assert!(schema_view.is_err());
 
         let dash = parse_from(["driggsby", "dash", "--json"]);
         assert!(dash.is_err());
+    }
+
+    #[test]
+    fn parse_removed_top_level_schema_command_is_rejected() {
+        let schema = parse_from(["driggsby", "schema"]);
+        assert!(schema.is_err());
+
+        let schema_view = parse_from(["driggsby", "schema", "view", "v1_transactions"]);
+        assert!(schema_view.is_err());
     }
 
     #[test]

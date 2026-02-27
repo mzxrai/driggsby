@@ -172,7 +172,7 @@ fn file_only_json_import_success_writes_rows() {
                 assert!(value["data"].get("undo_id").is_none());
                 assert_eq!(
                     value["data"]["next_step"]["command"],
-                    Value::String("driggsby schema".to_string())
+                    Value::String("driggsby db schema".to_string())
                 );
                 let commands = action_commands(&value);
                 assert_eq!(

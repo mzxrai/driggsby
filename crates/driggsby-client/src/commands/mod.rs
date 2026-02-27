@@ -6,3 +6,4 @@ pub mod demo;
 pub mod import;
 pub mod recurring;
 pub mod schema;
+pub mod sql;
