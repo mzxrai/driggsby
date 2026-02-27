@@ -2,9 +2,22 @@ use std::fs;
 use std::path::Path;
 
 use driggsby_client::setup::ensure_initialized_at;
-use driggsby_client::state::map_io_error;
+use driggsby_client::state::{map_io_error, open_connection};
 use rusqlite::Connection;
 use tempfile::tempdir;
+
+#[cfg(unix)]
+fn permission_mode(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+
+    let metadata = fs::metadata(path);
+    assert!(metadata.is_ok());
+    if let Ok(resolved) = metadata {
+        return resolved.permissions().mode() & 0o777;
+    }
+
+    0
+}
 
 fn object_exists(connection: &Connection, object_type: &str, object_name: &str) -> bool {
     let query = "SELECT 1 FROM sqlite_master WHERE type = ?1 AND name = ?2";
@@ -83,6 +96,90 @@ fn setup_creates_ledger_db_at_home_override() {
             assert!(setup_context.db_path.ends_with("ledger.db"));
             assert!(setup_context.readonly_uri.contains("mode=ro"));
             assert!(home.join("ledger.db").exists());
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn setup_hardens_ledger_home_and_db_permissions() {
+    let temp = tempdir();
+    assert!(temp.is_ok());
+    if let Ok(temp_dir) = temp {
+        let home = temp_dir.path().join("ledger-home");
+        let context = ensure_initialized_at(&home);
+        assert!(context.is_ok());
+
+        let db_path = home.join("ledger.db");
+        assert_eq!(permission_mode(&home), 0o700);
+        assert_eq!(permission_mode(&db_path), 0o600);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn open_connection_hardens_sidecar_permissions_when_present() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempdir();
+    assert!(temp.is_ok());
+    if let Ok(temp_dir) = temp {
+        let home = temp_dir.path().join("ledger-home");
+        let context = ensure_initialized_at(&home);
+        assert!(context.is_ok());
+        if let Ok(setup_context) = context {
+            let db_path = Path::new(&setup_context.db_path);
+            let wal = std::path::PathBuf::from(format!("{}-wal", setup_context.db_path));
+            let shm = std::path::PathBuf::from(format!("{}-shm", setup_context.db_path));
+            let journal = std::path::PathBuf::from(format!("{}-journal", setup_context.db_path));
+
+            let make_file = |path: &Path| {
+                let write_result = fs::write(path, b"sidecar");
+                assert!(write_result.is_ok());
+                let chmod_result = fs::set_permissions(path, fs::Permissions::from_mode(0o644));
+                assert!(chmod_result.is_ok());
+            };
+            make_file(&wal);
+            make_file(&shm);
+            make_file(&journal);
+
+            let reopened = open_connection(db_path);
+            assert!(reopened.is_ok());
+
+            assert_eq!(permission_mode(&wal), 0o600);
+            assert_eq!(permission_mode(&shm), 0o600);
+            assert_eq!(permission_mode(&journal), 0o600);
+        }
+    }
+}
+
+#[test]
+fn writable_connection_enables_secure_delete() {
+    let temp = tempdir();
+    assert!(temp.is_ok());
+    if let Ok(temp_dir) = temp {
+        let home = temp_dir.path().join("ledger-home");
+        let context = ensure_initialized_at(&home);
+        assert!(context.is_ok());
+        if let Ok(setup_context) = context {
+            let db_path = Path::new(&setup_context.db_path);
+            let connection = open_connection(db_path);
+            assert!(connection.is_ok());
+            if let Ok(conn) = connection {
+                let foreign_keys =
+                    conn.query_row("PRAGMA foreign_keys", [], |row| row.get::<_, i64>(0));
+                assert!(foreign_keys.is_ok());
+                if let Ok(value) = foreign_keys {
+                    assert_eq!(value, 1);
+                }
+
+                let secure_delete =
+                    conn.query_row("PRAGMA secure_delete", [], |row| row.get::<_, i64>(0));
+                assert!(secure_delete.is_ok());
+                if let Ok(value) = secure_delete {
+                    assert_eq!(value, 1);
+                }
+            }
         }
     }
 }
@@ -443,6 +540,55 @@ fn setup_maps_unexpected_path_error_to_ledger_init_failed() {
         assert!(result.is_err());
         if let Err(error) = result {
             assert_eq!(error.code, "ledger_init_failed");
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn setup_refuses_symlink_ledger_home_path() {
+    use std::os::unix::fs as unix_fs;
+
+    let temp = tempdir();
+    assert!(temp.is_ok());
+    if let Ok(temp_dir) = temp {
+        let target_home = temp_dir.path().join("real-home");
+        let create_target = fs::create_dir_all(&target_home);
+        assert!(create_target.is_ok());
+
+        let symlink_home = temp_dir.path().join("symlink-home");
+        let create_link = unix_fs::symlink(&target_home, &symlink_home);
+        assert!(create_link.is_ok());
+
+        let result = ensure_initialized_at(&symlink_home);
+        assert!(result.is_err());
+        if let Err(error) = result {
+            assert_eq!(error.code, "ledger_init_permission_denied");
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn setup_refuses_symlink_parent_in_ledger_home_path() {
+    use std::os::unix::fs as unix_fs;
+
+    let temp = tempdir();
+    assert!(temp.is_ok());
+    if let Ok(temp_dir) = temp {
+        let target_parent = temp_dir.path().join("real-parent");
+        let create_target = fs::create_dir_all(&target_parent);
+        assert!(create_target.is_ok());
+
+        let linked_parent = temp_dir.path().join("linked-parent");
+        let create_link = unix_fs::symlink(&target_parent, &linked_parent);
+        assert!(create_link.is_ok());
+
+        let home = linked_parent.join("ledger-home");
+        let result = ensure_initialized_at(&home);
+        assert!(result.is_err());
+        if let Err(error) = result {
+            assert_eq!(error.code, "ledger_init_permission_denied");
         }
     }
 }

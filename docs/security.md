@@ -56,3 +56,24 @@ All GitHub Actions are pinned to full commit SHAs.
 
 1. Cargo dependencies.
 2. GitHub Actions dependencies.
+
+## Local Ledger Hardening
+
+Driggsby also applies local runtime hardening for ledger storage.
+
+On Unix systems:
+
+1. Ledger home is enforced to `0700`.
+2. Ledger database artifacts are enforced to `0600` when present:
+   1. `ledger.db`
+   2. `ledger.db-wal`
+   3. `ledger.db-shm`
+   4. `ledger.db-journal`
+3. Writable SQLite connections enable:
+   1. `PRAGMA foreign_keys = ON`
+   2. `PRAGMA secure_delete = ON`
+
+Notes:
+
+1. Driggsby is local-first but currently does not encrypt the SQLite database at rest.
+2. These controls reduce accidental local exposure and data remanence risk, but they do not replace host-level malware defenses or full-disk encryption.
