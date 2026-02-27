@@ -145,8 +145,8 @@ pub fn render_recurring(data: &Value) -> io::Result<String> {
             align: Align::Left,
         },
         Column {
-            name: "Evidence",
-            align: Align::Left,
+            name: "Count",
+            align: Align::Right,
         },
     ];
 
@@ -171,7 +171,10 @@ pub fn render_recurring(data: &Value) -> io::Result<String> {
                     .and_then(Value::as_str)
                     .unwrap_or("unknown")
                     .to_string(),
-                format_recurring_evidence(row),
+                row.get("occurrence_count")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+                    .to_string(),
             ]
         })
         .collect::<Vec<Vec<String>>>();
@@ -184,10 +187,7 @@ pub fn render_recurring(data: &Value) -> io::Result<String> {
     ));
 
     lines.push(String::new());
-    lines.push("Confidence is score(cadence fit + amount fit + counterparty quality).".to_string());
-    if let Some(policy_version) = data.get("policy_version").and_then(Value::as_str) {
-        lines.push(format!("Policy version: {policy_version}"));
-    }
+    lines.push("Tip: run `driggsby recurring --json` for full evidence details.".to_string());
 
     Ok(lines.join("\n"))
 }
@@ -504,22 +504,6 @@ fn compare_optional_str_nulls_last(left: Option<&str>, right: Option<&str>) -> O
         (None, Some(_)) => Ordering::Greater,
         (None, None) => Ordering::Equal,
     }
-}
-
-fn format_recurring_evidence(row: &Value) -> String {
-    let score = row.get("score").and_then(Value::as_f64).unwrap_or(0.0);
-    let cadence_fit = row
-        .get("cadence_fit")
-        .and_then(Value::as_f64)
-        .unwrap_or(0.0);
-    let amount_fit = row.get("amount_fit").and_then(Value::as_f64).unwrap_or(0.0);
-    let occurrence_count = row
-        .get("occurrence_count")
-        .and_then(Value::as_i64)
-        .unwrap_or(0);
-    format!(
-        "score {score:.2} | cadence {cadence_fit:.2} | amount {amount_fit:.2} | n={occurrence_count}"
-    )
 }
 
 fn push_data_coverage_hint(lines: &mut Vec<String>, data: &Value) {
