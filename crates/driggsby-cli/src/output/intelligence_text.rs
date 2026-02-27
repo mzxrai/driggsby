@@ -10,22 +10,15 @@ pub fn render_anomalies(data: &Value) -> io::Result<String> {
         .get("rows")
         .and_then(Value::as_array)
         .ok_or_else(|| io::Error::other("anomalies output requires rows"))?;
+    let from = data.get("from").and_then(Value::as_str);
+    let to = data.get("to").and_then(Value::as_str);
 
     let normalized = normalize_anomaly_rows(rows);
     if normalized.is_empty() {
-        let mut lines = vec![
-            "No anomalies found.".to_string(),
-            String::new(),
-            "Driggsby did not detect anomaly candidates in the selected window.".to_string(),
-            "Try widening --from/--to or importing additional history.".to_string(),
-            "If intelligence seems stale, run `driggsby intelligence refresh`.".to_string(),
-        ];
+        let mut lines = empty_anomalies_lines(from, to);
         push_data_coverage_hint(&mut lines, data);
         return Ok(lines.join("\n"));
     }
-
-    let from = data.get("from").and_then(Value::as_str);
-    let to = data.get("to").and_then(Value::as_str);
 
     let mut lines = vec![
         anomalies_heading(normalized.len(), from, to),
@@ -102,22 +95,15 @@ pub fn render_recurring(data: &Value) -> io::Result<String> {
         .get("rows")
         .and_then(Value::as_array)
         .ok_or_else(|| io::Error::other("recurring output requires rows"))?;
+    let from = data.get("from").and_then(Value::as_str);
+    let to = data.get("to").and_then(Value::as_str);
 
     let normalized = normalize_recurring_rows(rows);
     if normalized.is_empty() {
-        let mut lines = vec![
-            "No recurring patterns found.".to_string(),
-            String::new(),
-            "Driggsby did not find recurring patterns in the selected window.".to_string(),
-            "Try widening --from/--to or importing additional history.".to_string(),
-            "If intelligence seems stale, run `driggsby intelligence refresh`.".to_string(),
-        ];
+        let mut lines = empty_recurring_lines(from, to);
         push_data_coverage_hint(&mut lines, data);
         return Ok(lines.join("\n"));
     }
-
-    let from = data.get("from").and_then(Value::as_str);
-    let to = data.get("to").and_then(Value::as_str);
 
     let mut lines = vec![
         recurring_heading(normalized.len(), from, to),
@@ -442,6 +428,56 @@ fn recurring_heading(count: usize, from: Option<&str>, to: Option<&str>) -> Stri
     }
 }
 
+fn empty_anomalies_lines(from: Option<&str>, to: Option<&str>) -> Vec<String> {
+    match (from, to) {
+        (Some(start), Some(end)) => vec![
+            format!("No anomalies found from {start} to {end}."),
+            String::new(),
+            "Try widening --from/--to or importing additional history.".to_string(),
+        ],
+        (Some(start), None) => vec![
+            format!("No anomalies found from {start} onward."),
+            String::new(),
+            "Try widening --from/--to or importing additional history.".to_string(),
+        ],
+        (None, Some(end)) => vec![
+            format!("No anomalies found up to {end}."),
+            String::new(),
+            "Try widening --from/--to or importing additional history.".to_string(),
+        ],
+        (None, None) => vec![
+            "No anomalies found.".to_string(),
+            String::new(),
+            "Import additional history and rerun `driggsby anomalies`.".to_string(),
+        ],
+    }
+}
+
+fn empty_recurring_lines(from: Option<&str>, to: Option<&str>) -> Vec<String> {
+    match (from, to) {
+        (Some(start), Some(end)) => vec![
+            format!("No recurring patterns found from {start} to {end}."),
+            String::new(),
+            "Try widening --from/--to or importing additional history.".to_string(),
+        ],
+        (Some(start), None) => vec![
+            format!("No recurring patterns found from {start} onward."),
+            String::new(),
+            "Try widening --from/--to or importing additional history.".to_string(),
+        ],
+        (None, Some(end)) => vec![
+            format!("No recurring patterns found up to {end}."),
+            String::new(),
+            "Try widening --from/--to or importing additional history.".to_string(),
+        ],
+        (None, None) => vec![
+            "No recurring patterns found.".to_string(),
+            String::new(),
+            "Import additional history and rerun `driggsby recurring`.".to_string(),
+        ],
+    }
+}
+
 fn value_str<'a>(value: &'a Value, key: &str) -> &'a str {
     match value.get(key) {
         Some(Value::String(inner)) => inner.as_str(),
@@ -527,14 +563,36 @@ mod tests {
         assert!(anomalies.is_ok());
         if let Ok(text) = anomalies {
             assert!(text.starts_with("No anomalies found."));
-            assert!(text.contains("driggsby intelligence refresh"));
+            assert!(!text.contains("driggsby intelligence refresh"));
+            assert!(!text.contains("--from/--to"));
         }
 
         let recurring = render_recurring(&recurring_payload);
         assert!(recurring.is_ok());
         if let Ok(text) = recurring {
             assert!(text.starts_with("No recurring patterns found."));
-            assert!(text.contains("driggsby intelligence refresh"));
+            assert!(!text.contains("driggsby intelligence refresh"));
+            assert!(!text.contains("--from/--to"));
+        }
+    }
+
+    #[test]
+    fn empty_filtered_intelligence_outputs_include_window_widening_hint() {
+        let anomalies_payload = json!({ "rows": [], "from": "2026-01-01" });
+        let recurring_payload = json!({ "rows": [], "to": "2026-06-30" });
+
+        let anomalies = render_anomalies(&anomalies_payload);
+        assert!(anomalies.is_ok());
+        if let Ok(text) = anomalies {
+            assert!(text.contains("--from/--to"));
+            assert!(text.contains("from 2026-01-01 onward"));
+        }
+
+        let recurring = render_recurring(&recurring_payload);
+        assert!(recurring.is_ok());
+        if let Ok(text) = recurring {
+            assert!(text.contains("--from/--to"));
+            assert!(text.contains("up to 2026-06-30"));
         }
     }
 }

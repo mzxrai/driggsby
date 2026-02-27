@@ -4,7 +4,6 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::commands::common::public_view_contracts;
 use crate::contracts::types::{DataRange, PublicView};
-use crate::intelligence::refresh::refresh_all;
 use crate::migrations::{
     REQUIRED_INDEX_NAMES, REQUIRED_META_KEYS, REQUIRED_VIEW_NAMES, run_pending,
     safe_repair_statement,
@@ -149,16 +148,12 @@ fn ensure_initialized_with_home_override(
 
     let db_path = ledger_db_path(&ledger_home);
     let mut connection = open_connection(&db_path)?;
-    let previous_user_version = read_user_version(&connection, &db_path)?;
 
     run_pending(&mut connection).map_err(|error| map_migration_error(&db_path, &error))?;
 
     verify_core_tables(&connection, &db_path)?;
     repair_safe_objects(&connection, &db_path)?;
     verify_post_repair_objects(&connection, &db_path)?;
-    if should_backfill_intelligence(previous_user_version, &connection, &db_path)? {
-        refresh_all(&mut connection, &db_path)?;
-    }
 
     let schema_version = read_schema_version(&connection, &db_path)?;
     let data_range = read_data_range(&connection, &db_path)?;
@@ -338,23 +333,6 @@ fn read_user_version(connection: &Connection, db_path: &Path) -> ClientResult<i6
     connection
         .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
         .map_err(|error| map_sqlite_error(db_path, &error))
-}
-
-fn should_backfill_intelligence(
-    previous_user_version: i64,
-    connection: &Connection,
-    db_path: &Path,
-) -> ClientResult<bool> {
-    if previous_user_version <= 0 || previous_user_version >= EXPECTED_USER_VERSION {
-        return Ok(false);
-    }
-
-    let transaction_count = connection
-        .query_row("SELECT COUNT(*) FROM internal_transactions", [], |row| {
-            row.get::<_, i64>(0)
-        })
-        .map_err(|error| map_sqlite_error(db_path, &error))?;
-    Ok(transaction_count > 0)
 }
 
 fn sqlite_object_exists(
