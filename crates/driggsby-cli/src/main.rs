@@ -109,6 +109,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     | ErrorKind::ValueValidation
                     | ErrorKind::WrongNumberOfValues
                     | ErrorKind::UnknownArgument
+                    | ErrorKind::InvalidSubcommand
             ) {
                 command_path_from_args(&raw_args)
             } else {
@@ -189,6 +190,8 @@ fn command_path_from_args(raw_args: &[String]) -> Option<String> {
         ["import", "undo", ..] => Some("import undo"),
         ["import", "keys", ..] => Some("import keys"),
         ["import", ..] => Some("import"),
+        ["intelligence", "refresh", ..] => Some("intelligence refresh"),
+        ["intelligence", ..] => Some("intelligence"),
         ["demo", "dash", ..] => Some("demo dash"),
         ["demo", "recurring", ..] => Some("demo recurring"),
         ["demo", "anomalies", ..] => Some("demo anomalies"),
@@ -216,6 +219,17 @@ fn removed_schema_command_error(raw_args: &[String]) -> Option<ClientError> {
 }
 
 fn parse_error_with_command_hint(clean_message: &str, command_hint: Option<&str>) -> ClientError {
+    if command_hint == Some("intelligence") {
+        return ClientError::invalid_argument_with_recovery(
+            clean_message,
+            vec![
+                "Run `driggsby intelligence refresh` to rebuild recurring/anomaly materializations."
+                    .to_string(),
+                "Run `driggsby intelligence --help` for maintenance command usage.".to_string(),
+            ],
+        );
+    }
+
     if command_hint == Some("db sql") && clean_message.contains("unexpected argument") {
         return ClientError::invalid_argument_with_recovery(
             "SQL must be provided as one quoted argument, or via --file/--file -.",

@@ -44,6 +44,7 @@ fn render_text_success(success: &SuccessEnvelope) -> io::Result<String> {
         "import duplicates" => import_text::render_import_duplicates(&success.data),
         "import keys uniq" => import_text::render_import_keys_uniq(&success.data),
         "import undo" => import_text::render_import_undo(&success.data),
+        "intelligence refresh" => import_text::render_intelligence_refresh(&success.data),
         "demo" | "dash" => demo_text::render_demo_or_dash(&success.command, &success.data),
         "anomalies" => intelligence_text::render_anomalies(&success.data),
         "recurring" => intelligence_text::render_recurring(&success.data),

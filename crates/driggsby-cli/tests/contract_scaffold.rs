@@ -308,6 +308,36 @@ fn schema_view_output_is_plaintext() {
 }
 
 #[test]
+fn schema_view_contracts_include_simplified_intelligence_columns() {
+    let (recurring_ok, recurring_body, _) = run_cli(&["db", "schema", "view", "v1_recurring"]);
+    assert!(recurring_ok);
+    assert!(recurring_body.contains("group_key"));
+    assert!(recurring_body.contains("account_key"));
+    assert!(recurring_body.contains("merchant"));
+    assert!(recurring_body.contains("cadence"));
+    assert!(recurring_body.contains("typical_amount"));
+    assert!(recurring_body.contains("currency"));
+    assert!(recurring_body.contains("last_seen_at"));
+    assert!(recurring_body.contains("next_expected_at"));
+    assert!(recurring_body.contains("occurrence_count"));
+    assert!(recurring_body.contains("score"));
+    assert!(recurring_body.contains("is_active"));
+
+    let (anomalies_ok, anomalies_body, _) = run_cli(&["db", "schema", "view", "v1_anomalies"]);
+    assert!(anomalies_ok);
+    assert!(anomalies_body.contains("txn_id"));
+    assert!(anomalies_body.contains("account_key"));
+    assert!(anomalies_body.contains("posted_at"));
+    assert!(anomalies_body.contains("merchant"));
+    assert!(anomalies_body.contains("amount"));
+    assert!(anomalies_body.contains("currency"));
+    assert!(anomalies_body.contains("reason_code"));
+    assert!(anomalies_body.contains("reason"));
+    assert!(anomalies_body.contains("score"));
+    assert!(anomalies_body.contains("severity"));
+}
+
+#[test]
 fn account_list_plaintext_and_json_contracts_are_supported() {
     let home = unique_test_home();
     let source_path = write_source_file(
@@ -1015,6 +1045,10 @@ fn anomalies_and_recurring_json_use_structured_objects() {
     let (anomalies_ok, anomalies_body, _) = run_cli(&["anomalies", "--json"]);
     assert!(anomalies_ok);
     let anomalies_payload = parse_json(&anomalies_body);
+    assert_eq!(
+        anomalies_payload["policy_version"],
+        Value::String("anomalies/v1".to_string())
+    );
     assert!(anomalies_payload["rows"].is_array());
     assert!(anomalies_payload["data_covers"].is_object());
     assert!(anomalies_payload["data_covers"]["from"].is_null());
@@ -1036,7 +1070,7 @@ fn anomalies_and_recurring_json_use_structured_objects() {
 }
 
 #[test]
-fn recurring_outputs_non_empty_plaintext_and_rich_json_after_import() {
+fn recurring_outputs_non_empty_plaintext_and_simplified_json_after_import() {
     let home = unique_test_home();
     let source = write_source_file(
         &home,
@@ -1078,23 +1112,42 @@ fn recurring_outputs_non_empty_plaintext_and_rich_json_after_import() {
     assert!(first["group_key"].is_string());
     assert!(first["account_key"].is_string());
     assert!(first["merchant"].is_string());
-    assert!(first["counterparty"].is_string());
-    assert!(first["counterparty_source"].is_string());
     assert!(first["cadence"].is_string());
     assert!(first["typical_amount"].is_number());
     assert!(first["currency"].is_string());
-    assert!(first["first_seen_at"].is_string());
     assert!(first["last_seen_at"].is_string());
     assert!(first["next_expected_at"].is_string() || first["next_expected_at"].is_null());
     assert!(first["occurrence_count"].is_i64());
-    assert!(first["cadence_fit"].is_number());
-    assert!(first["amount_fit"].is_number());
     assert!(first["score"].is_number());
-    assert!(first["amount_min"].is_number());
-    assert!(first["amount_max"].is_number());
-    assert!(first["sample_description"].is_string());
-    assert!(first["quality_flags"].is_array());
     assert!(first["is_active"].is_boolean());
+}
+
+#[test]
+fn hidden_intelligence_refresh_command_supports_json() {
+    let (ok, body, _) = run_cli(&["intelligence", "refresh", "--json"]);
+    assert!(ok);
+    let payload = parse_json(&body);
+    assert_eq!(payload["ok"], Value::Bool(true));
+    assert_eq!(payload["version"], Value::String("v1".to_string()));
+    assert!(payload["data"]["recurring_rows"].is_i64());
+    assert!(payload["data"]["anomaly_rows"].is_i64());
+    assert!(payload["data"]["completed_at"].is_string());
+}
+
+#[test]
+fn intelligence_invalid_subcommand_has_recovery_to_refresh() {
+    let (ok, body, _) = run_cli(&["intelligence", "frob", "--json"]);
+    assert!(!ok);
+    let payload = assert_json_error_contract(&body, "invalid_argument");
+    let steps = payload["error"]["recovery_steps"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(steps.iter().any(|step| {
+        step.as_str()
+            .unwrap_or_default()
+            .contains("driggsby intelligence refresh")
+    }));
 }
 
 #[test]

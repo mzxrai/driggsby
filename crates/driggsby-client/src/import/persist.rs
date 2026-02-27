@@ -8,6 +8,7 @@ use ulid::Ulid;
 use crate::ClientResult;
 use crate::import::CanonicalTransaction;
 use crate::import::dedupe::{BatchRow, DuplicateRecord, dedupe_key};
+use crate::intelligence::refresh::refresh_all_in_transaction;
 use crate::state::map_sqlite_error;
 
 #[derive(Debug, Clone)]
@@ -121,6 +122,7 @@ pub(crate) fn persist_import(
         .map_err(|error| map_sqlite_error(db_path, &error))?;
 
     insert_import_account_stats(&transaction, db_path, input.import_id, &account_stats)?;
+    refresh_all_in_transaction(&transaction, db_path)?;
 
     transaction
         .commit()

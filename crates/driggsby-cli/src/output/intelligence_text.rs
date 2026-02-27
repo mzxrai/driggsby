@@ -18,6 +18,7 @@ pub fn render_anomalies(data: &Value) -> io::Result<String> {
             String::new(),
             "Driggsby did not detect anomaly candidates in the selected window.".to_string(),
             "Try widening --from/--to or importing additional history.".to_string(),
+            "If intelligence seems stale, run `driggsby intelligence refresh`.".to_string(),
         ];
         push_data_coverage_hint(&mut lines, data);
         return Ok(lines.join("\n"));
@@ -109,6 +110,7 @@ pub fn render_recurring(data: &Value) -> io::Result<String> {
             String::new(),
             "Driggsby did not find recurring patterns in the selected window.".to_string(),
             "Try widening --from/--to or importing additional history.".to_string(),
+            "If intelligence seems stale, run `driggsby intelligence refresh`.".to_string(),
         ];
         push_data_coverage_hint(&mut lines, data);
         return Ok(lines.join("\n"));
@@ -187,7 +189,7 @@ pub fn render_recurring(data: &Value) -> io::Result<String> {
     ));
 
     lines.push(String::new());
-    lines.push("Tip: run `driggsby recurring --json` for full evidence details.".to_string());
+    lines.push("Tip: run `driggsby recurring --json` for structured output.".to_string());
 
     Ok(lines.join("\n"))
 }
@@ -202,6 +204,15 @@ pub fn normalize_anomaly_rows(rows: &[Value]) -> Vec<Value> {
                 Value::String(
                     row.get("txn_id")
                         .or_else(|| row.get("id"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                ),
+            );
+            object.insert(
+                "account_key".to_string(),
+                Value::String(
+                    row.get("account_key")
                         .and_then(Value::as_str)
                         .unwrap_or("")
                         .to_string(),
@@ -239,10 +250,32 @@ pub fn normalize_anomaly_rows(rows: &[Value]) -> Vec<Value> {
                 ),
             );
             object.insert(
+                "reason_code".to_string(),
+                Value::String(
+                    row.get("reason_code")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                ),
+            );
+            object.insert(
                 "reason".to_string(),
                 Value::String(
                     row.get("reason")
                         .or_else(|| row.get("note"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                ),
+            );
+            object.insert(
+                "score".to_string(),
+                Value::from(row.get("score").and_then(Value::as_f64).unwrap_or(0.0)),
+            );
+            object.insert(
+                "severity".to_string(),
+                Value::String(
+                    row.get("severity")
                         .and_then(Value::as_str)
                         .unwrap_or("")
                         .to_string(),
@@ -289,28 +322,8 @@ pub fn normalize_recurring_rows(rows: &[Value]) -> Vec<Value> {
                 "merchant".to_string(),
                 Value::String(
                     row.get("merchant")
-                        .or_else(|| row.get("counterparty"))
                         .and_then(Value::as_str)
                         .unwrap_or("")
-                        .to_string(),
-                ),
-            );
-            object.insert(
-                "counterparty".to_string(),
-                Value::String(
-                    row.get("counterparty")
-                        .or_else(|| row.get("merchant"))
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string(),
-                ),
-            );
-            object.insert(
-                "counterparty_source".to_string(),
-                Value::String(
-                    row.get("counterparty_source")
-                        .and_then(Value::as_str)
-                        .unwrap_or("merchant")
                         .to_string(),
                 ),
             );
@@ -326,7 +339,6 @@ pub fn normalize_recurring_rows(rows: &[Value]) -> Vec<Value> {
             object.insert(
                 "typical_amount".to_string(),
                 row.get("typical_amount")
-                    .or_else(|| row.get("amount"))
                     .cloned()
                     .unwrap_or(Value::from(0.0)),
             );
@@ -340,19 +352,9 @@ pub fn normalize_recurring_rows(rows: &[Value]) -> Vec<Value> {
                 ),
             );
             object.insert(
-                "first_seen_at".to_string(),
-                Value::String(
-                    row.get("first_seen_at")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string(),
-                ),
-            );
-            object.insert(
                 "last_seen_at".to_string(),
                 Value::String(
                     row.get("last_seen_at")
-                        .or_else(|| row.get("posted_at"))
                         .and_then(Value::as_str)
                         .unwrap_or("")
                         .to_string(),
@@ -374,61 +376,16 @@ pub fn normalize_recurring_rows(rows: &[Value]) -> Vec<Value> {
                 ),
             );
             object.insert(
-                "cadence_fit".to_string(),
-                Value::from(
-                    row.get("cadence_fit")
-                        .and_then(Value::as_f64)
-                        .unwrap_or(0.0),
-                ),
-            );
-            object.insert(
-                "amount_fit".to_string(),
-                Value::from(row.get("amount_fit").and_then(Value::as_f64).unwrap_or(0.0)),
-            );
-            object.insert(
                 "score".to_string(),
                 Value::from(row.get("score").and_then(Value::as_f64).unwrap_or(0.0)),
             );
             object.insert(
-                "amount_min".to_string(),
-                Value::from(
-                    row.get("amount_min")
-                        .or_else(|| row.get("typical_amount"))
-                        .and_then(Value::as_f64)
-                        .unwrap_or(0.0),
-                ),
-            );
-            object.insert(
-                "amount_max".to_string(),
-                Value::from(
-                    row.get("amount_max")
-                        .or_else(|| row.get("typical_amount"))
-                        .and_then(Value::as_f64)
-                        .unwrap_or(0.0),
-                ),
-            );
-            object.insert(
-                "sample_description".to_string(),
-                Value::String(
-                    row.get("sample_description")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string(),
-                ),
-            );
-            object.insert(
-                "quality_flags".to_string(),
-                row.get("quality_flags")
-                    .cloned()
-                    .unwrap_or_else(|| Value::Array(Vec::new())),
-            );
-            object.insert(
                 "is_active".to_string(),
-                Value::Bool(
-                    row.get("is_active")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
-                ),
+                Value::Bool(match row.get("is_active") {
+                    Some(Value::Bool(value)) => *value,
+                    Some(Value::Number(value)) => value.as_i64().unwrap_or(0) == 1,
+                    _ => false,
+                }),
             );
             Value::Object(object)
         })
@@ -446,7 +403,7 @@ pub fn normalize_recurring_rows(rows: &[Value]) -> Vec<Value> {
                 .unwrap_or(0.0)
                 .total_cmp(&left.get("score").and_then(Value::as_f64).unwrap_or(0.0))
         })
-        .then_with(|| value_str(left, "counterparty").cmp(value_str(right, "counterparty")))
+        .then_with(|| value_str(left, "merchant").cmp(value_str(right, "merchant")))
         .then_with(|| value_str(left, "group_key").cmp(value_str(right, "group_key")))
     });
 
@@ -570,12 +527,14 @@ mod tests {
         assert!(anomalies.is_ok());
         if let Ok(text) = anomalies {
             assert!(text.starts_with("No anomalies found."));
+            assert!(text.contains("driggsby intelligence refresh"));
         }
 
         let recurring = render_recurring(&recurring_payload);
         assert!(recurring.is_ok());
         if let Ok(text) = recurring {
             assert!(text.starts_with("No recurring patterns found."));
+            assert!(text.contains("driggsby intelligence refresh"));
         }
     }
 }

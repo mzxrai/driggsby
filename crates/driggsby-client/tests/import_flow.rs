@@ -1542,6 +1542,105 @@ fn undo_clears_account_type_when_account_has_no_remaining_transactions() {
 }
 
 #[test]
+fn import_create_refreshes_materialized_intelligence_views() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("refresh-create.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+
+        write_file(
+            &source_path,
+            r#"[
+  {"statement_id":"refresh_stmt_2026_01","account_key":"acct_refresh","posted_at":"2026-01-05","amount":-15.99,"currency":"USD","description":"NETFLIX MONTHLY","merchant":"Netflix"},
+  {"statement_id":"refresh_stmt_2026_01","account_key":"acct_refresh","posted_at":"2026-02-05","amount":-15.99,"currency":"USD","description":"NETFLIX MONTHLY","merchant":"Netflix"},
+  {"statement_id":"refresh_stmt_2026_01","account_key":"acct_refresh","posted_at":"2026-03-05","amount":-15.99,"currency":"USD","description":"NETFLIX MONTHLY","merchant":"Netflix"},
+  {"statement_id":"refresh_stmt_2026_01","account_key":"acct_refresh","posted_at":"2026-04-05","amount":-15.99,"currency":"USD","description":"NETFLIX MONTHLY","merchant":"Netflix"},
+  {"statement_id":"refresh_stmt_2026_01","account_key":"acct_refresh","posted_at":"2026-01-03","amount":-22.00,"currency":"USD","description":"GROCERIES","merchant":"Fresh Mart"},
+  {"statement_id":"refresh_stmt_2026_01","account_key":"acct_refresh","posted_at":"2026-01-10","amount":-21.50,"currency":"USD","description":"GROCERIES","merchant":"Fresh Mart"},
+  {"statement_id":"refresh_stmt_2026_01","account_key":"acct_refresh","posted_at":"2026-01-17","amount":-22.25,"currency":"USD","description":"GROCERIES","merchant":"Fresh Mart"},
+  {"statement_id":"refresh_stmt_2026_01","account_key":"acct_refresh","posted_at":"2026-01-24","amount":-22.10,"currency":"USD","description":"GROCERIES","merchant":"Fresh Mart"},
+  {"statement_id":"refresh_stmt_2026_01","account_key":"acct_refresh","posted_at":"2026-01-31","amount":-21.95,"currency":"USD","description":"GROCERIES","merchant":"Fresh Mart"},
+  {"statement_id":"refresh_stmt_2026_01","account_key":"acct_refresh","posted_at":"2026-02-07","amount":-318.40,"currency":"USD","description":"GROCERIES","merchant":"Fresh Mart"}
+]"#,
+        );
+
+        let imported = run_import(&home, Some(&source_path), false, None);
+        assert!(imported.is_ok());
+
+        let db_path = home.join("ledger.db");
+        let recurring_count = query_count(&db_path, "SELECT COUNT(*) FROM v1_recurring");
+        let anomalies_count = query_count(&db_path, "SELECT COUNT(*) FROM v1_anomalies");
+        assert!(recurring_count > 0);
+        assert!(anomalies_count > 0);
+    }
+}
+
+#[test]
+fn import_undo_refreshes_intelligence_views_and_sets_flag() {
+    let temp = temp_home();
+    assert!(temp.is_ok());
+    if let Ok((_temp, home)) = temp {
+        let source_path = home.join("refresh-undo.json");
+        let create_home = fs::create_dir_all(&home);
+        assert!(create_home.is_ok());
+
+        write_file(
+            &source_path,
+            r#"[
+  {"statement_id":"refresh_undo_stmt_2026_01","account_key":"acct_refresh_undo","posted_at":"2026-01-05","amount":-18.00,"currency":"USD","description":"MUSIC SUBSCRIPTION","merchant":"Music Box"},
+  {"statement_id":"refresh_undo_stmt_2026_01","account_key":"acct_refresh_undo","posted_at":"2026-02-05","amount":-18.00,"currency":"USD","description":"MUSIC SUBSCRIPTION","merchant":"Music Box"},
+  {"statement_id":"refresh_undo_stmt_2026_01","account_key":"acct_refresh_undo","posted_at":"2026-03-05","amount":-18.00,"currency":"USD","description":"MUSIC SUBSCRIPTION","merchant":"Music Box"},
+  {"statement_id":"refresh_undo_stmt_2026_01","account_key":"acct_refresh_undo","posted_at":"2026-04-05","amount":-18.00,"currency":"USD","description":"MUSIC SUBSCRIPTION","merchant":"Music Box"},
+  {"statement_id":"refresh_undo_stmt_2026_01","account_key":"acct_refresh_undo","posted_at":"2026-01-03","amount":-19.50,"currency":"USD","description":"WEEKLY MARKET","merchant":"Corner Market"},
+  {"statement_id":"refresh_undo_stmt_2026_01","account_key":"acct_refresh_undo","posted_at":"2026-01-10","amount":-20.00,"currency":"USD","description":"WEEKLY MARKET","merchant":"Corner Market"},
+  {"statement_id":"refresh_undo_stmt_2026_01","account_key":"acct_refresh_undo","posted_at":"2026-01-17","amount":-19.75,"currency":"USD","description":"WEEKLY MARKET","merchant":"Corner Market"},
+  {"statement_id":"refresh_undo_stmt_2026_01","account_key":"acct_refresh_undo","posted_at":"2026-01-24","amount":-20.10,"currency":"USD","description":"WEEKLY MARKET","merchant":"Corner Market"},
+  {"statement_id":"refresh_undo_stmt_2026_01","account_key":"acct_refresh_undo","posted_at":"2026-01-31","amount":-20.25,"currency":"USD","description":"WEEKLY MARKET","merchant":"Corner Market"},
+  {"statement_id":"refresh_undo_stmt_2026_01","account_key":"acct_refresh_undo","posted_at":"2026-02-07","amount":-271.25,"currency":"USD","description":"WEEKLY MARKET","merchant":"Corner Market"}
+]"#,
+        );
+
+        let imported = run_import(&home, Some(&source_path), false, None);
+        assert!(imported.is_ok());
+
+        let mut import_id = None;
+        if let Ok(success) = imported {
+            let payload = serde_json::to_value(success);
+            assert!(payload.is_ok());
+            if let Ok(value) = payload {
+                import_id = extract_import_id(&value);
+            }
+        }
+        assert!(import_id.is_some());
+
+        let db_path = home.join("ledger.db");
+        let recurring_before = query_count(&db_path, "SELECT COUNT(*) FROM v1_recurring");
+        let anomalies_before = query_count(&db_path, "SELECT COUNT(*) FROM v1_anomalies");
+        assert!(recurring_before > 0);
+        assert!(anomalies_before > 0);
+
+        if let Some(id) = import_id.as_deref() {
+            let undo_result = run_import_undo(&home, id);
+            assert!(undo_result.is_ok());
+            if let Ok(success) = undo_result {
+                let payload = serde_json::to_value(success);
+                assert!(payload.is_ok());
+                if let Ok(value) = payload {
+                    assert_eq!(value["data"]["intelligence_refreshed"], Value::Bool(true));
+                }
+            }
+        }
+
+        let recurring_after = query_count(&db_path, "SELECT COUNT(*) FROM v1_recurring");
+        let anomalies_after = query_count(&db_path, "SELECT COUNT(*) FROM v1_anomalies");
+        assert_eq!(recurring_after, 0);
+        assert_eq!(anomalies_after, 0);
+    }
+}
+
+#[test]
 fn undo_promotes_next_candidate() {
     let temp = temp_home();
     assert!(temp.is_ok());

@@ -211,6 +211,54 @@ pub fn render_import_undo(data: &Value) -> io::Result<String> {
                 "Rows promoted:",
                 get_i64(summary, "rows_promoted").to_string(),
             ),
+            (
+                "Intelligence refreshed:",
+                if data
+                    .get("intelligence_refreshed")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    "yes".to_string()
+                } else {
+                    "no".to_string()
+                },
+            ),
+        ],
+        2,
+    ));
+
+    Ok(lines.join("\n"))
+}
+
+pub fn render_intelligence_refresh(data: &Value) -> io::Result<String> {
+    let completed_at = data
+        .get("completed_at")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+
+    let mut lines = vec![
+        "Intelligence refresh completed.".to_string(),
+        String::new(),
+        "Summary:".to_string(),
+    ];
+
+    lines.extend(format::key_value_rows(
+        &[
+            (
+                "Recurring rows:",
+                data.get("recurring_rows")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+                    .to_string(),
+            ),
+            (
+                "Anomaly rows:",
+                data.get("anomaly_rows")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+                    .to_string(),
+            ),
+            ("Completed at:", completed_at.to_string()),
         ],
         2,
     ));
@@ -971,6 +1019,7 @@ mod tests {
 
     use super::{
         render_import_keys_uniq, render_import_list, render_import_run, render_import_undo,
+        render_intelligence_refresh,
     };
 
     #[test]
@@ -1139,6 +1188,24 @@ mod tests {
             assert!(text.starts_with("Import reverted successfully."));
             assert!(text.contains("Rows reverted:"));
             assert!(text.contains("Rows promoted:"));
+        }
+    }
+
+    #[test]
+    fn intelligence_refresh_renders_summary() {
+        let payload = json!({
+            "recurring_rows": 3,
+            "anomaly_rows": 1,
+            "completed_at": "2026-02-27T18:22:33Z"
+        });
+
+        let rendered = render_intelligence_refresh(&payload);
+        assert!(rendered.is_ok());
+        if let Ok(text) = rendered {
+            assert!(text.starts_with("Intelligence refresh completed."));
+            assert!(text.contains("Recurring rows:"));
+            assert!(text.contains("Anomaly rows:"));
+            assert!(text.contains("Completed at:"));
         }
     }
 

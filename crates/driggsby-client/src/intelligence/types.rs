@@ -8,6 +8,7 @@ pub struct IntelligenceFilter {
 
 #[derive(Debug, Clone)]
 pub struct NormalizedTransaction {
+    pub txn_id: String,
     pub account_key: String,
     pub posted_at: NaiveDate,
     pub amount: f64,

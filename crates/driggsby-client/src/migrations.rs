@@ -12,6 +12,8 @@ const ADD_INTERNAL_DEDUPE_SCOPE_ID_SQL: &str =
     include_str!("migrations/0004_internal_dedupe_scope_id.sql");
 const ADD_ACCOUNTS_METADATA_AND_IMPORT_ACCOUNT_STATS_SQL: &str =
     include_str!("migrations/0005_accounts_metadata_and_import_account_stats.sql");
+const MATERIALIZED_INTELLIGENCE_REFRESH_SQL: &str =
+    include_str!("migrations/0006_materialized_intelligence_refresh.sql");
 
 pub const REQUIRED_VIEW_NAMES: [&str; 5] = [
     "v1_transactions",
@@ -21,7 +23,7 @@ pub const REQUIRED_VIEW_NAMES: [&str; 5] = [
     "v1_anomalies",
 ];
 
-pub const REQUIRED_INDEX_NAMES: [&str; 9] = [
+pub const REQUIRED_INDEX_NAMES: [&str; 11] = [
     "idx_internal_transactions_import_id",
     "idx_internal_transactions_account_posted_at",
     "idx_internal_transactions_account_external_id",
@@ -31,6 +33,8 @@ pub const REQUIRED_INDEX_NAMES: [&str; 9] = [
     "idx_internal_transaction_dedupe_candidates_import_id",
     "idx_internal_import_account_stats_import_id",
     "idx_internal_import_account_stats_account_key",
+    "idx_internal_recurring_materialized_last_seen_at",
+    "idx_internal_anomalies_materialized_posted_at",
 ];
 
 pub const REQUIRED_META_KEYS: [(&str, &str); 3] = [
@@ -46,6 +50,7 @@ pub fn run_pending(conn: &mut Connection) -> rusqlite_migration::Result<()> {
         M::up(ADD_STATEMENT_ID_AND_DUPLICATE_METADATA_SQL),
         M::up(ADD_INTERNAL_DEDUPE_SCOPE_ID_SQL),
         M::up(ADD_ACCOUNTS_METADATA_AND_IMPORT_ACCOUNT_STATS_SQL),
+        M::up(MATERIALIZED_INTELLIGENCE_REFRESH_SQL),
     ]);
     migrations.to_latest(conn)
 }
@@ -109,6 +114,8 @@ mod tests {
             "idx_internal_transaction_dedupe_candidates_import_id",
             "idx_internal_import_account_stats_import_id",
             "idx_internal_import_account_stats_account_key",
+            "idx_internal_recurring_materialized_last_seen_at",
+            "idx_internal_anomalies_materialized_posted_at",
         ] {
             let sql = safe_repair_statement(name);
             assert!(sql.is_some());

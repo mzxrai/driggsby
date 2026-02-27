@@ -184,6 +184,12 @@ pub enum Commands {
         #[command(subcommand)]
         command: ImportCommand,
     },
+    /// Internal intelligence maintenance commands
+    #[command(hide = true, arg_required_else_help = true)]
+    Intelligence {
+        #[command(subcommand)]
+        command: IntelligenceCommand,
+    },
     /// Preview Driggsby capabilities using bundled sample data
     #[command(arg_required_else_help = true)]
     Demo {
@@ -315,6 +321,16 @@ pub enum ImportKeysCommand {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum IntelligenceCommand {
+    /// Rebuild materialized recurring/anomaly intelligence outputs
+    Refresh {
+        /// Emit machine-readable JSON output
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum DemoCommand {
     /// Open the demo dashboard with bundled sample data
     Dash,
@@ -341,7 +357,7 @@ mod tests {
 
     #[test]
     fn parse_command_paths() {
-        let cases: [Vec<&str>; 26] = [
+        let cases: [Vec<&str>; 28] = [
             vec!["driggsby", "account", "list"],
             vec!["driggsby", "account", "list", "--json"],
             vec!["driggsby", "db", "schema"],
@@ -374,6 +390,8 @@ mod tests {
                 "account_key",
                 "--json",
             ],
+            vec!["driggsby", "intelligence", "refresh"],
+            vec!["driggsby", "intelligence", "refresh", "--json"],
             vec!["driggsby", "demo", "dash"],
             vec!["driggsby", "demo", "anomalies"],
             vec![
