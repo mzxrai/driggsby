@@ -17,7 +17,7 @@ Usage:
 Start here:
   driggsby account list
   driggsby import create --help
-  driggsby schema
+  driggsby db schema
 ";
 
 const TOP_LEVEL_HELP: &str = "Driggsby — personal finance intelligence layer
@@ -40,8 +40,8 @@ View Driggsby analysis (refreshed on each new import):
   driggsby dash                                           Open web dashboard (prints URL, attempts browser open)
 
 Need to do custom analysis? Run SQL against our views:
-  1. driggsby schema                                      Get DB path and view names
-  2. Query `v1_*` views with sqlite3 or any SQL client
+  1. driggsby db schema                                   Get DB path and view names
+  2. driggsby db sql \"SELECT * FROM v1_transactions LIMIT 5;\"
 
 Other commands:
   driggsby account list                                   Show account-level ledger orientation
@@ -68,6 +68,13 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(2));
         }
         return Ok(ExitCode::SUCCESS);
+    }
+    if let Some(error) = removed_schema_command_error(&raw_args) {
+        let mode = infer_requested_output_mode(&raw_args);
+        if output::print_failure(&error, mode).is_err() {
+            return Err(ExitCode::from(2));
+        }
+        return Err(ExitCode::from(1));
     }
     let parsed = cli::Cli::try_parse();
     let cli = match parsed {
@@ -101,6 +108,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     | ErrorKind::InvalidValue
                     | ErrorKind::ValueValidation
                     | ErrorKind::WrongNumberOfValues
+                    | ErrorKind::UnknownArgument
             ) {
                 command_path_from_args(&raw_args)
             } else {
@@ -108,7 +116,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             };
             let clean_message = strip_clap_boilerplate(&err.to_string());
             let parse_error =
-                ClientError::invalid_argument_for_command(&clean_message, command_hint.as_deref());
+                parse_error_with_command_hint(&clean_message, command_hint.as_deref());
             let mode = infer_requested_output_mode(&raw_args);
             if output::print_failure(&parse_error, mode).is_err() {
                 return Err(ExitCode::from(2));
@@ -155,7 +163,7 @@ fn strip_clap_boilerplate(message: &str) -> String {
 /// Builds the subcommand path from raw CLI args for use in help hints.
 ///
 /// Collects non-flag, non-path-like arguments after the binary name to form
-/// a command string like "import undo" or "schema view".
+/// a command string like "import undo" or "db schema view".
 fn command_path_from_args(raw_args: &[String]) -> Option<String> {
     let non_flags: Vec<&str> = raw_args
         .iter()
@@ -170,6 +178,10 @@ fn command_path_from_args(raw_args: &[String]) -> Option<String> {
     let hint = match non_flags.as_slice() {
         ["account", "list", ..] => Some("account list"),
         ["account", ..] => Some("account"),
+        ["db", "schema", "view", ..] => Some("db schema view"),
+        ["db", "schema", ..] => Some("db schema"),
+        ["db", "sql", ..] => Some("db sql"),
+        ["db", ..] => Some("db"),
         ["import", "keys", "uniq", ..] => Some("import keys uniq"),
         ["import", "create", ..] => Some("import create"),
         ["import", "list", ..] => Some("import list"),
@@ -177,8 +189,6 @@ fn command_path_from_args(raw_args: &[String]) -> Option<String> {
         ["import", "undo", ..] => Some("import undo"),
         ["import", "keys", ..] => Some("import keys"),
         ["import", ..] => Some("import"),
-        ["schema", "view", ..] => Some("schema view"),
-        ["schema", ..] => Some("schema"),
         ["demo", "dash", ..] => Some("demo dash"),
         ["demo", "recurring", ..] => Some("demo recurring"),
         ["demo", "anomalies", ..] => Some("demo anomalies"),
@@ -189,6 +199,36 @@ fn command_path_from_args(raw_args: &[String]) -> Option<String> {
         _ => None,
     };
     hint.map(std::string::ToString::to_string)
+}
+
+fn removed_schema_command_error(raw_args: &[String]) -> Option<ClientError> {
+    if raw_args.len() < 2 || raw_args[1] != "schema" {
+        return None;
+    }
+
+    Some(ClientError::invalid_argument_with_recovery(
+        "Top-level `schema` commands were removed.",
+        vec![
+            "Run `driggsby db schema` for DB discovery.".to_string(),
+            "Run `driggsby db --help` for DB command usage.".to_string(),
+        ],
+    ))
+}
+
+fn parse_error_with_command_hint(clean_message: &str, command_hint: Option<&str>) -> ClientError {
+    if command_hint == Some("db sql") && clean_message.contains("unexpected argument") {
+        return ClientError::invalid_argument_with_recovery(
+            "SQL must be provided as one quoted argument, or via --file/--file -.",
+            vec![
+                "Quote inline SQL: `driggsby db sql \"SELECT * FROM v1_transactions LIMIT 5;\"`."
+                    .to_string(),
+                "Use a file path: `driggsby db sql --file query.sql`.".to_string(),
+                "Use stdin: `cat query.sql | driggsby db sql --file -`.".to_string(),
+            ],
+        );
+    }
+
+    ClientError::invalid_argument_for_command(clean_message, command_hint)
 }
 
 fn exit_code_for_error(error: &ClientError) -> ExitCode {

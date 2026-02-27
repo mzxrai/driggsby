@@ -14,7 +14,7 @@ pub fn render_schema_summary(data: &Value) -> io::Result<String> {
         .ok_or_else(|| io::Error::other("schema summary requires public_views"))?;
 
     let mut lines = vec![
-        "Your ledger database is stored locally and can be queried with sqlite3 or any SQL client."
+        "Your ledger database is stored locally and can be queried with `driggsby db sql`."
             .to_string(),
         "These views and columns are the Driggsby semantic contract for agent and human queries."
             .to_string(),
@@ -33,14 +33,17 @@ pub fn render_schema_summary(data: &Value) -> io::Result<String> {
     ));
 
     lines.push(String::new());
-    lines.push("Connect with sqlite3:".to_string());
-    lines.push(format!("  sqlite3 \"{readonly_uri}\""));
+    lines.push("Run SQL with Driggsby:".to_string());
+    lines.push("  driggsby db sql \"SELECT * FROM v1_transactions LIMIT 5;\"".to_string());
+    lines.push("  driggsby db sql \"SELECT * FROM v1_accounts LIMIT 5;\"".to_string());
+    lines.push(
+        "  driggsby db sql \"SELECT * FROM v1_imports ORDER BY created_at DESC LIMIT 5;\""
+            .to_string(),
+    );
 
     lines.push(String::new());
-    lines.push("Example queries:".to_string());
-    lines.push("  SELECT * FROM v1_transactions LIMIT 5;".to_string());
-    lines.push("  SELECT * FROM v1_accounts LIMIT 5;".to_string());
-    lines.push("  SELECT * FROM v1_imports ORDER BY created_at DESC LIMIT 5;".to_string());
+    lines.push("External SQL clients (optional):".to_string());
+    lines.push(format!("  sqlite3 \"{readonly_uri}\""));
 
     lines.push(String::new());
     lines.push("Public Views:".to_string());
@@ -62,7 +65,7 @@ pub fn render_schema_summary(data: &Value) -> io::Result<String> {
 
     lines.push(String::new());
     lines.push("Inspect one view in detail:".to_string());
-    lines.push("  driggsby schema view <name>".to_string());
+    lines.push("  driggsby db schema view <name>".to_string());
 
     Ok(lines.join("\n"))
 }
@@ -162,6 +165,7 @@ mod tests {
             assert!(text.contains("semantic contract"));
             assert!(text.contains("View: v1_transactions"));
             assert!(text.contains("txn_id"));
+            assert!(text.contains("driggsby db schema view <name>"));
         }
     }
 

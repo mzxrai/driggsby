@@ -411,7 +411,7 @@ fn build_next_actions(
     (
         ImportNextStep {
             label: "Connect and query your data".to_string(),
-            command: "driggsby schema".to_string(),
+            command: "driggsby db schema".to_string(),
         },
         other_actions,
     )

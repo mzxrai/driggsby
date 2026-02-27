@@ -980,7 +980,7 @@ mod tests {
             "import_id": "imp_1",
             "next_step": {
                 "label": "Connect and query your data",
-                "command": "driggsby schema"
+                "command": "driggsby db schema"
             },
             "other_actions": [
                 {
@@ -1021,7 +1021,7 @@ mod tests {
             "import_id": "imp_1",
             "next_step": {
                 "label": "Connect and query your data",
-                "command": "driggsby schema"
+                "command": "driggsby db schema"
             },
             "other_actions": [],
             "summary": {
@@ -1348,7 +1348,7 @@ mod tests {
             "import_id": "imp_1",
             "next_step": {
                 "label": "Connect and query your data",
-                "command": "driggsby schema"
+                "command": "driggsby db schema"
             },
             "other_actions": [],
             "summary": {
@@ -1440,7 +1440,7 @@ mod tests {
             "import_id": "imp_1",
             "next_step": {
                 "label": "Connect and query your data",
-                "command": "driggsby schema"
+                "command": "driggsby db schema"
             },
             "other_actions": [],
             "summary": {

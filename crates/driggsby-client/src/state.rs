@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use rusqlite::{Connection, Error as SqliteError, ffi::ErrorCode};
+use rusqlite::{Connection, Error as SqliteError, OpenFlags, ffi::ErrorCode};
 
 use crate::{ClientError, ClientResult};
 
@@ -39,6 +39,16 @@ pub fn ledger_db_path(home: &Path) -> PathBuf {
 pub fn open_connection(db_path: &Path) -> ClientResult<Connection> {
     let connection =
         Connection::open(db_path).map_err(|error| map_sqlite_error(db_path, &error))?;
+    connection
+        .busy_timeout(Duration::from_millis(250))
+        .map_err(|error| map_sqlite_error(db_path, &error))?;
+    Ok(connection)
+}
+
+pub fn open_readonly_connection(db_path: &Path) -> ClientResult<Connection> {
+    let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI;
+    let connection = Connection::open_with_flags(db_path, flags)
+        .map_err(|error| map_sqlite_error(db_path, &error))?;
     connection
         .busy_timeout(Duration::from_millis(250))
         .map_err(|error| map_sqlite_error(db_path, &error))?;

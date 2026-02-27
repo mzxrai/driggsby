@@ -26,8 +26,8 @@ View Driggsby analysis (refreshed on each new import):
   driggsby dash                                           Open web dashboard (prints URL, attempts browser open)
 
 Need to do custom analysis? Run SQL against our views:
-  1. driggsby schema                                      Get DB path and view names
-  2. Query `v1_*` views with sqlite3 or any SQL client
+  1. driggsby db schema                                   Get DB path and view names
+  2. driggsby db sql \"SELECT * FROM v1_transactions LIMIT 5;\"
 
 Other commands:
   driggsby account list                                   Show account-level ledger orientation
@@ -48,7 +48,7 @@ Usage:
 Start here:
   driggsby account list
   driggsby import create --help
-  driggsby schema
+  driggsby db schema
 ";
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -223,7 +223,7 @@ fn help_output_pipe_close_does_not_panic() {
 
 #[test]
 fn success_output_pipe_close_does_not_panic() {
-    assert_pipe_close_does_not_panic(&["schema"], true);
+    assert_pipe_close_does_not_panic(&["db", "schema"], true);
 }
 
 #[test]
@@ -277,13 +277,14 @@ fn bare_import_shows_help_with_subcommands() {
 
 #[test]
 fn schema_output_is_plaintext_and_data_access_focused() {
-    let (ok, body, _) = run_cli(&["schema"]);
+    let (ok, body, _) = run_cli(&["db", "schema"]);
     assert!(ok);
     assert!(body.starts_with("Your ledger database is stored locally"));
     assert!(body.contains("Summary:"));
     assert!(body.contains("Database path:"));
     assert!(body.contains("Readonly URI:"));
-    assert!(body.contains("Connect with sqlite3:"));
+    assert!(body.contains("Run SQL with Driggsby:"));
+    assert!(body.contains("driggsby db sql"));
     assert!(body.contains("Public Views:"));
     assert!(body.contains("semantic contract"));
     assert!(body.contains("View: v1_transactions"));
@@ -296,7 +297,7 @@ fn schema_output_is_plaintext_and_data_access_focused() {
 
 #[test]
 fn schema_view_output_is_plaintext() {
-    let (ok, body, _) = run_cli(&["schema", "view", "v1_transactions"]);
+    let (ok, body, _) = run_cli(&["db", "schema", "view", "v1_transactions"]);
     assert!(ok);
     assert!(body.starts_with("View details for v1_transactions."));
     assert!(body.contains("Columns:"));
@@ -340,9 +341,124 @@ fn account_list_plaintext_and_json_contracts_are_supported() {
 
 #[test]
 fn unknown_schema_view_uses_plaintext_error_contract() {
-    let (ok, body, _) = run_cli(&["schema", "view", "v1_missing"]);
+    let (ok, body, _) = run_cli(&["db", "schema", "view", "v1_missing"]);
     assert!(!ok);
     assert_text_error_contract(&body, "unknown_view");
+}
+
+#[test]
+fn removed_top_level_schema_command_returns_guided_error() {
+    let (ok, body, _) = run_cli(&["schema"]);
+    assert!(!ok);
+    assert_text_error_contract(&body, "invalid_argument");
+    assert!(body.contains("Top-level `schema` commands were removed."));
+    assert!(body.contains("Run `driggsby db schema` for DB discovery."));
+    assert!(body.contains("Run `driggsby db --help` for DB command usage."));
+
+    let (json_ok, json_body, _) = run_cli(&["schema", "--json"]);
+    assert!(!json_ok);
+    let payload = assert_json_error_contract(&json_body, "invalid_argument");
+    assert!(
+        payload["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Top-level `schema` commands were removed.")
+    );
+}
+
+#[test]
+fn db_sql_plaintext_and_json_contracts_are_supported() {
+    let home = unique_test_home();
+    let source_path = write_source_file(
+        &home,
+        "sql-source.json",
+        r#"[
+  {"statement_id":"acct_cli_sql_1_2026-01-31","account_key":"acct_cli_sql_1","account_type":"checking","posted_at":"2026-01-01","amount":-5.00,"currency":"USD","description":"COFFEE"},
+  {"statement_id":"acct_cli_sql_1_2026-01-31","account_key":"acct_cli_sql_1","account_type":"checking","posted_at":"2026-01-02","amount":10.00,"currency":"USD","description":"REFUND"}
+]"#,
+    );
+    let source_arg = source_path.display().to_string();
+    let (import_ok, _import_body) =
+        run_cli_in_home_with_input(&home, &["import", "create", &source_arg], None);
+    assert!(import_ok);
+
+    let (text_ok, text_body) = run_cli_in_home_with_input(
+        &home,
+        &[
+            "db",
+            "sql",
+            "SELECT account_key, txn_count FROM v1_accounts",
+        ],
+        None,
+    );
+    assert!(text_ok);
+    assert!(text_body.starts_with("Query completed successfully."));
+    assert!(text_body.contains("Summary:"));
+    assert!(text_body.contains("Rows returned:"));
+    assert!(text_body.contains("Results:"));
+    assert!(text_body.contains("acct_cli_sql_1"));
+    assert!(text_body.contains("2"));
+
+    let (json_ok, json_body) = run_cli_in_home_with_input(
+        &home,
+        &[
+            "db",
+            "sql",
+            "SELECT account_key, txn_count FROM v1_accounts",
+            "--json",
+        ],
+        None,
+    );
+    assert!(json_ok);
+    let payload = parse_json(&json_body);
+    assert!(payload["columns"].is_array());
+    assert!(payload["rows"].is_array());
+    assert_eq!(payload["row_count"], Value::from(1));
+    assert_eq!(payload["truncated"], Value::Bool(false));
+    assert_eq!(payload["source"], Value::String("inline".to_string()));
+    assert!(payload.get("ok").is_none());
+    assert!(payload.get("version").is_none());
+}
+
+#[test]
+fn db_sql_blocks_writes_and_internal_reads() {
+    let home = unique_test_home();
+
+    let (write_ok, write_body) = run_cli_in_home_with_input(
+        &home,
+        &[
+            "db",
+            "sql",
+            "INSERT INTO internal_meta(key, value) VALUES ('x', 'y')",
+        ],
+        None,
+    );
+    assert!(!write_ok);
+    assert_text_error_contract(&write_body, "invalid_argument");
+
+    let (internal_ok, internal_body) =
+        run_cli_in_home_with_input(&home, &["db", "sql", "SELECT * FROM internal_meta"], None);
+    assert!(!internal_ok);
+    assert_text_error_contract(&internal_body, "invalid_argument");
+}
+
+#[test]
+fn db_sql_unquoted_query_has_actionable_recovery_steps() {
+    let (ok, body, _) = run_cli(&[
+        "db",
+        "sql",
+        "SELECT",
+        "*",
+        "FROM",
+        "v1_transactions",
+        "LIMIT",
+        "5",
+    ]);
+    assert!(!ok);
+    assert_text_error_contract(&body, "invalid_argument");
+    assert!(body.contains("SQL must be provided as one quoted argument"));
+    assert!(body.contains("Quote inline SQL:"));
+    assert!(body.contains("driggsby db sql --file query.sql"));
 }
 
 #[test]
@@ -393,7 +509,7 @@ fn import_plaintext_success_shows_import_id_and_safe_actions() {
     assert!(body.contains("Duplicates Preview"));
     assert!(body.contains("Your ledger now:"));
     assert!(body.contains("Next step:"));
-    assert!(body.contains("driggsby schema"));
+    assert!(body.contains("driggsby db schema"));
     assert!(body.contains("Other actions:"));
     assert!(body.contains("driggsby import list"));
     assert!(body.contains("driggsby import undo"));
@@ -423,7 +539,7 @@ fn import_json_success_uses_structured_envelope_without_command_field() {
     assert!(payload["data"].get("undo_id").is_none());
     assert_eq!(
         payload["data"]["next_step"]["command"],
-        Value::String("driggsby schema".to_string())
+        Value::String("driggsby db schema".to_string())
     );
     assert!(payload["data"]["next_step"]["label"].is_string());
     assert!(payload["data"]["other_actions"].is_array());
@@ -876,7 +992,7 @@ fn import_keys_uniq_invalid_property_is_json_error_with_json_flag() {
 
 #[test]
 fn unsupported_json_flag_on_plaintext_only_command_is_rejected() {
-    let (ok, body, _) = run_cli(&["schema", "--json"]);
+    let (ok, body, _) = run_cli(&["db", "schema", "--json"]);
     assert!(!ok);
     let _payload = assert_json_error_contract(&body, "invalid_argument");
 }

@@ -225,6 +225,37 @@ fn setup_repairs_missing_safe_view() {
 }
 
 #[test]
+fn setup_fails_when_required_view_sql_is_tampered() {
+    let temp = tempdir();
+    assert!(temp.is_ok());
+    if let Ok(temp_dir) = temp {
+        let home = temp_dir.path().join("ledger-home");
+
+        let context = ensure_initialized_at(&home);
+        assert!(context.is_ok());
+        if let Ok(setup_context) = context {
+            let connection = Connection::open(&setup_context.db_path);
+            assert!(connection.is_ok());
+            if let Ok(conn) = connection {
+                let tamper_result = conn.execute_batch(
+                    "DROP VIEW v1_transactions;
+                     CREATE VIEW v1_transactions AS
+                     SELECT key AS txn_id, value AS description
+                     FROM internal_meta;",
+                );
+                assert!(tamper_result.is_ok());
+            }
+
+            let failed = ensure_initialized_at(&home);
+            assert!(failed.is_err());
+            if let Err(error) = failed {
+                assert_eq!(error.code, "ledger_corrupt");
+            }
+        }
+    }
+}
+
+#[test]
 fn setup_repairs_missing_safe_index() {
     let temp = tempdir();
     assert!(temp.is_ok());

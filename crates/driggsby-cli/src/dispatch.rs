@@ -2,7 +2,8 @@ use driggsby_client::commands;
 use driggsby_client::{ClientResult, SuccessEnvelope};
 
 use crate::cli::{
-    AccountCommand, Cli, Commands, DemoCommand, ImportCommand, ImportKeysCommand, SchemaCommand,
+    AccountCommand, Cli, Commands, DbCommand, DemoCommand, ImportCommand, ImportKeysCommand,
+    SchemaCommand,
 };
 
 pub fn dispatch(cli: &Cli) -> ClientResult<SuccessEnvelope> {
@@ -10,9 +11,12 @@ pub fn dispatch(cli: &Cli) -> ClientResult<SuccessEnvelope> {
         Commands::Account { command } => match command {
             AccountCommand::List { .. } => commands::accounts::run(),
         },
-        Commands::Schema { command } => match command {
-            Some(SchemaCommand::View { view_name }) => commands::schema::view(view_name),
-            None => commands::schema::summary(),
+        Commands::Db { command } => match command {
+            DbCommand::Schema { command } => match command {
+                Some(SchemaCommand::View { view_name }) => commands::schema::view(view_name),
+                None => commands::schema::summary(),
+            },
+            DbCommand::Sql { query, file, .. } => commands::sql::run(query.clone(), file.clone()),
         },
         Commands::Import { command } => match command {
             ImportCommand::Create {
@@ -65,7 +69,7 @@ mod tests {
     fn dispatches_to_expected_command_names() {
         let cases: [(&[&str], &str); 3] = [
             (&["driggsby", "demo", "dash"], "demo"),
-            (&["driggsby", "schema"], "schema"),
+            (&["driggsby", "db", "schema"], "db schema"),
             (&["driggsby", "account", "list"], "account list"),
         ];
 
